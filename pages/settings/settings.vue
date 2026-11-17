@@ -21,10 +21,6 @@
           <text class="mm-settings-page__label">图片空间</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
-        <view class="mm-settings-page__row" @click="shareManagerVisible = true">
-          <text class="mm-settings-page__label">分享管理</text>
-          <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
-        </view>
         <view class="mm-settings-page__row">
           <text class="mm-settings-page__label">读取剪贴板功能</text>
           <wd-switch v-model="clipboardAppendEnabled" />
@@ -54,13 +50,15 @@
           </view>
         </view>
       </view>
+
+      <!-- 分享列表：直接内嵌展示，不再需要点二级入口 -->
+      <view class="mm-settings-page__section">
+        <mm-share-manager @changed="noop" />
+      </view>
     </view>
 
     <!-- 回收站 -->
     <mm-trash v-model:visible="trashVisible" @changed="noop" />
-
-    <!-- 分享管理：列出已创建的分享链接，可复制 / 提前作废 -->
-    <mm-share-manager v-model:visible="shareManagerVisible" />
 
     <!-- 图片空间：列表 / 预览 / 单独清理 -->
     <wd-popup v-model="imageSpaceVisible" position="bottom" custom-style="height:72vh;border-radius:12px 12px 0 0;">
@@ -134,8 +132,6 @@ const store = useAppStore()
 const users = ref([])
 const usersLoading = ref(false)
 const trashVisible = ref(false)
-/** 分享管理面板 */
-const shareManagerVisible = ref(false)
 const imageSpaceVisible = ref(false)
 const imageList = ref([])
 const imageUrls = ref({})

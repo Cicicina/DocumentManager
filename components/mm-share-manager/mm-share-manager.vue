@@ -1,94 +1,91 @@
 <template>
-  <wd-popup v-model="modelVisible" position="right" custom-style="width:min(460px,92vw);height:100%;">
-    <view class="mm-shares">
-      <view class="mm-shares__head">
-        <text class="mm-shares__title">分享管理</text>
-        <view class="mm-shares__head-actions">
-          <view class="mm-shares__icon-btn" title="刷新" aria-label="刷新" @click="refresh">
-            <uni-icons type="refresh" size="16" color="var(--mm-text-weak)" />
-          </view>
-          <view class="mm-shares__icon-btn" title="关闭" aria-label="关闭" @click="close">
-            <uni-icons type="closeempty" size="18" color="var(--mm-text-weak)" />
-          </view>
+  <view class="mm-shares">
+    <view class="mm-shares__head">
+      <text class="mm-shares__title">分享列表</text>
+      <view class="mm-shares__head-actions">
+        <view class="mm-shares__icon-btn" title="刷新" aria-label="刷新" @click="refresh">
+          <uni-icons type="refresh" size="16" color="var(--mm-text-weak)" />
         </view>
       </view>
-
-      <text class="mm-shares__hint">作废后链接立即失效，无法恢复。</text>
-
-      <scroll-view class="mm-shares__body" scroll-y>
-        <view v-if="loading && list.length === 0" class="mm-shares__status">
-          <wd-loading size="20px" />
-        </view>
-        <view v-else-if="list.length === 0" class="mm-shares__status">
-          <text>还没有创建过分享链接</text>
-        </view>
-        <view v-for="item in list" :key="item._id" class="mm-shares__row">
-          <view class="mm-shares__row-head">
-            <text class="mm-shares__name" :title="item.doc_name">{{ item.doc_name || '（文档已删除）' }}</text>
-            <text class="mm-shares__badge" :class="'is-' + item.status">{{ statusText(item) }}</text>
-          </view>
-          <text class="mm-shares__meta">
-            {{ formatTime(item.created_at) }} 创建 · {{ expireText(item) }} · 打开 {{ item.access_count }} 次
-          </text>
-          <view class="mm-shares__row-actions">
-            <wd-button size="small" plain :disabled="item.status !== 'active'" @click="copyLink(item)">复制链接</wd-button>
-            <wd-button
-              size="small"
-              type="error"
-              plain
-              :disabled="item.status === 'revoked'"
-              @click="revokeItem(item)"
-            >作废</wd-button>
-          </view>
-        </view>
-      </scroll-view>
     </view>
-  </wd-popup>
+
+    <text class="mm-shares__hint">作废后链接立即失效，无法恢复。无限期分享也可在此提前作废。</text>
+
+    <view class="mm-shares__body">
+      <view v-if="loading && list.length === 0" class="mm-shares__status">
+        <wd-loading size="20px" />
+        <text>正在加载分享列表…</text>
+      </view>
+      <view v-else-if="loadFailed" class="mm-shares__status">
+        <text>{{ loadError || '分享列表加载失败' }}</text>
+        <wd-button size="small" plain @click="refresh">重试</wd-button>
+      </view>
+      <view v-else-if="list.length === 0" class="mm-shares__status">
+        <text>还没有创建过分享链接</text>
+        <text class="mm-shares__status-tip">打开任意文档，点工具栏的「分享」即可创建</text>
+      </view>
+      <view v-for="item in list" :key="item._id" class="mm-shares__row">
+        <view class="mm-shares__row-head">
+          <text class="mm-shares__name" :title="item.doc_name">{{ item.doc_name || '（文档已删除）' }}</text>
+          <text class="mm-shares__badge" :class="'is-' + item.status">{{ statusText(item) }}</text>
+        </view>
+        <text class="mm-shares__meta">
+          {{ formatTime(item.created_at) }} 创建 · {{ expireText(item) }} · 打开 {{ item.access_count }} 次
+        </text>
+        <view class="mm-shares__row-actions">
+          <wd-button size="small" plain :disabled="item.status !== 'active'" @click="copyLink(item)">复制链接</wd-button>
+          <wd-button
+            size="small"
+            type="error"
+            plain
+            :disabled="item.status === 'revoked'"
+            @click="revokeItem(item)"
+          >作废</wd-button>
+        </view>
+      </view>
+    </view>
+  </view>
 </template>
 
 <script setup>
 /**
- * 分享管理面板：列出当前账号创建过的分享链接，展示状态与有效期，
- * 支持复制链接与提前作废（作废后立即失效，不可恢复）。
+ * 分享列表：直接内嵌在设置页，列出当前账号创建过的分享。
+ * 展示状态与有效期，支持复制链接与提前作废（作废后立即失效，不可恢复）。
  *
  * 状态由服务端计算（active / expired / revoked），前端不重复判定时间，
  * 避免客户端时钟不准导致「显示有效但打不开」。
+ *
+ * 加载失败必须显式展示原因与重试按钮，不能静默显示成「还没有分享」——
+ * 否则用户会误以为功能没做，实际上只是请求失败。
  */
-import { computed, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { listShares, revokeShare } from '@/common/api/mm-share.js'
 import { writeShareUrl } from '@/common/utils/clipboard.js'
 
-const props = defineProps({
-  visible: { type: Boolean, default: false }
-})
-
-const emit = defineEmits(['update:visible', 'changed'])
+const emit = defineEmits(['changed'])
 
 const list = ref([])
 const loading = ref(false)
+const loadFailed = ref(false)
+const loadError = ref('')
 
-const modelVisible = computed({
-  get: () => props.visible,
-  set: (value) => emit('update:visible', value)
-})
-
-watch(() => props.visible, (value) => {
-  if (value) refresh()
-})
-
-function close() {
-  modelVisible.value = false
-}
+onMounted(refresh)
 
 async function refresh() {
   loading.value = true
+  loadFailed.value = false
+  loadError.value = ''
   try {
     const res = await listShares({ page: 1, page_size: 100 })
     if (res.code === 0 && res.data) {
       list.value = res.data.items || []
     } else {
-      toastError(res.message || '分享列表加载失败')
+      loadFailed.value = true
+      loadError.value = res.message || '分享列表加载失败'
     }
+  } catch (error) {
+    loadFailed.value = true
+    loadError.value = (error && error.message) || '分享列表加载失败'
   } finally {
     loading.value = false
   }
@@ -107,8 +104,8 @@ function statusText(item) {
 
 /** 有效期文案：无限期 / 具体到期时间 */
 function expireText(item) {
-  if (item.infinite) return '永久有效'
   if (item.doc_deleted) return '文档已删除'
+  if (item.infinite) return '永久有效'
   return formatTime(item.expire_at) + ' 到期'
 }
 
@@ -149,9 +146,6 @@ async function revokeItem(item) {
 
 <style scoped>
 .mm-shares {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
   background-color: var(--mm-surface);
 }
 
@@ -159,10 +153,8 @@ async function revokeItem(item) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex: none;
-  height: calc(48px * var(--mm-ui-scale, 1));
-  padding: 0 calc(14px * var(--mm-ui-scale, 1));
-  border-bottom: 1px solid var(--mm-border);
+  min-height: calc(40px * var(--mm-ui-scale, 1));
+  padding: 0 calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-shares__title {
@@ -190,25 +182,33 @@ async function revokeItem(item) {
 }
 
 .mm-shares__hint {
-  flex: none;
-  padding: calc(8px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
+  display: block;
+  padding: 0 calc(16px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
   font-size: calc(11px * var(--mm-ui-scale, 1));
+  line-height: 1.5;
   color: var(--mm-text-weak);
 }
 
 .mm-shares__body {
-  flex: 1;
-  min-height: 0;
-  padding: 0 calc(14px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
+  max-height: calc(300px * var(--mm-ui-scale, 1));
+  overflow-y: auto;
+  padding: 0 calc(16px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
 }
 
 .mm-shares__status {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: calc(40px * var(--mm-ui-scale, 1)) 0;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+  padding: calc(24px * var(--mm-ui-scale, 1)) 0;
   font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
+  text-align: center;
+}
+
+.mm-shares__status-tip {
+  font-size: calc(11px * var(--mm-ui-scale, 1));
 }
 
 .mm-shares__row {
