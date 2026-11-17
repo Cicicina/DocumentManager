@@ -2014,21 +2014,66 @@ function formatCommentTime(value) {
  */
 let shellSelectionTimer = null
 
+/**
+ * 选区是否完整落在「正文原文」上。
+ *
+ * 批注气泡（data-mm-ignore）里展示的是批注内容，批注详情弹层里展示的是标记段落与批注全文，
+ * 它们都不是文档原文本身。浏览器对选中这些文字同样给出非折叠选区，
+ * 旧逻辑只看 isCollapsed 就把「添加批注」浮钮放出来，还保留上一次的正文锚点，
+ * 于是「选批注文字也弹按钮」，点下去甚至会把批注挂到旧位置。
+ * 这里对选区两端点做硬校验：任一落在忽略子树或正文容器外，都视为不可批注。
+ */
+function isBodyTextSelection(container) {
+  const selection = typeof window !== 'undefined' ? window.getSelection() : null
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return false
+  let range
+  try { range = selection.getRangeAt(0) } catch (e) { return false }
+  if (!range || !container || !container.contains(range.commonAncestorContainer)) return false
+
+  function insideIgnored(node) {
+    let el = node && node.nodeType === 1 ? node : (node && node.parentElement)
+    for (let depth = 0; el && depth < 8; depth++) {
+      if (el === container) return false
+      if (typeof el.hasAttribute === 'function' && el.hasAttribute('data-mm-ignore')) return true
+      el = el.parentElement
+    }
+    return false
+  }
+
+  return !insideIgnored(range.startContainer)
+    && !insideIgnored(range.endContainer)
+    && !insideIgnored(range.commonAncestorContainer)
+}
+
 function captureShellSelection() {
   if (typeof document === 'undefined' || typeof window === 'undefined') return
   const container = document.querySelector('.mm-viewer__body')
+  // 批注输入弹层打开期间冻结锚点：用户在弹层里打字会让正文选区折叠，
+  // 若此时又去选别的段落，锚点会悄悄换成另一段，和弹层里展示的原文对不上。
+  if (commentDialogVisible.value) {
+    hasActiveSelection.value = false
+    return
+  }
   if (!container) {
     hasActiveSelection.value = false
     return
   }
-  // 批注输入弹层打开期间冻结锚点：用户在弹层里打字会让正文选区折叠，
-  // 若此时又去选别的段落，锚点会悄悄换成另一段，和弹层里展示的原文对不上。
-  if (commentDialogVisible.value) return
   // 可见性同步判定，点按钮时按钮要立刻淡出，不能等防抖
   const selection = window.getSelection()
   const collapsed = !(selection && selection.rangeCount > 0 && !selection.isCollapsed)
-  hasActiveSelection.value = !collapsed
-  if (collapsed) return
+  if (collapsed) {
+    // 折叠态只关按钮，不清锚点：点「添加批注」的瞬间浏览器就会折叠选区
+    hasActiveSelection.value = false
+    return
+  }
+  // 非折叠选区必须完整落在正文原文上：
+  // 选到批注气泡文字 / 详情弹层文字时不弹按钮，并丢弃上一次的正文锚点，避免复用错位置。
+  if (!isBodyTextSelection(container)) {
+    hasActiveSelection.value = false
+    annotationSelection.value = null
+    return
+  }
+  hasActiveSelection.value = true
 
   // 坐标换算较重，拖选过程合并成一次
   if (shellSelectionTimer) clearTimeout(shellSelectionTimer)
@@ -2036,8 +2081,13 @@ function captureShellSelection() {
     shellSelectionTimer = null
     const { getSelectionOffsets } = await import('@/common/utils/selection.js')
     const offsets = getSelectionOffsets(container, store.state.editorContent || '')
-    // 只在选到有效区间时覆盖：落在图片 alt / 表格间隙等无效位置时保留上次有效锚点
-    if (offsets) annotationSelection.value = offsets
+    if (offsets) {
+      annotationSelection.value = offsets
+    } else {
+      // 落在图片 alt / 表格间隙等映射不到的位置：同样收起按钮并丢弃旧锚点
+      hasActiveSelection.value = false
+      annotationSelection.value = null
+    }
   }, 80)
 }
 
