@@ -166,14 +166,15 @@ function normalizeTags(tags) {
 }
 
 /**
- * 校验并规范化文件夹图标 {type: preset|custom, value: string}；空值返回 null。
+ * 校验并规范化文件夹图标 {type: preset|wot|custom, value: string}；空值返回 null。
+ * preset=内置 SVG 名，wot=wot-design-uni 图标名，custom=云存储 fileID。
  * @param {object} icon 原始图标
  * @returns {object|null}
  */
 function normalizeIcon(icon) {
   if (icon === null || icon === undefined) return null
   if (typeof icon !== 'object') throw bizError(ERR.PARAM_INVALID, '图标格式不正确')
-  const type = icon.type === 'custom' ? 'custom' : (icon.type === 'preset' ? 'preset' : '')
+  const type = ['custom', 'preset', 'wot'].indexOf(icon.type) !== -1 ? icon.type : ''
   const value = typeof icon.value === 'string' ? icon.value.trim() : ''
   if (!type || !value) throw bizError(ERR.PARAM_INVALID, '图标格式不正确')
   return { type, value }
@@ -767,7 +768,7 @@ module.exports = {
   },
 
   /**
-   * 更新文件夹图标（preset 预制 / custom 云存储 fileID）。写操作：assertWrite(folder_id)。
+   * 更新文件夹图标（preset 预制 SVG / wot 字体图标 / custom 云存储 fileID）。写操作：assertWrite(folder_id)。
    * @param {{folder_id?:string, file_id?:string, icon:object}} param
    * @returns {Promise<object>}
    */

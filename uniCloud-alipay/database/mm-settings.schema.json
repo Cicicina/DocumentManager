@@ -38,11 +38,11 @@
     },
     "root_icon": {
       "bsonType": "object",
-      "description": "目录树根节点图标 {type:'preset'|'custom', value:string}；null 表示使用默认图标",
+      "description": "目录树根节点图标 {type:'preset'|'wot'|'custom', value:string}；null 表示使用默认图标",
       "properties": {
         "type": {
           "bsonType": "string",
-          "description": "preset 预置图标 / custom 自定义上传"
+          "description": "preset 预置图标 / wot wot-design-uni 图标 / custom 自定义上传"
         },
         "value": {
           "bsonType": "string",

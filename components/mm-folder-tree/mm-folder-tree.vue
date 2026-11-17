@@ -14,6 +14,13 @@
         :src="rootIconSrc"
         mode="aspectFit"
       />
+      <wd-icon
+        v-else-if="isWot(rootIcon)"
+        class="mm-tree__wot-icon"
+        :name="rootIcon.value"
+        size="15px"
+        color="var(--mm-text-weak)"
+      />
       <uni-icons v-else class="mm-tree__icon" type="home" size="15" color="var(--mm-text-weak)" />
       <text class="mm-tree__name">{{ rootName || '全部文档' }}</text>
       <view class="mm-tree__more" @click.stop="openRootMenu">
@@ -43,6 +50,13 @@
         class="mm-tree__folder-img"
         :src="iconSrc(node)"
         mode="aspectFit"
+      />
+      <wd-icon
+        v-else-if="isWot(node.icon)"
+        class="mm-tree__wot-icon"
+        :name="node.icon.value"
+        size="15px"
+        color="var(--mm-text-weak)"
       />
       <uni-icons v-else class="mm-tree__icon" type="folder-add" size="15" color="var(--mm-text-weak)" />
       <text class="mm-tree__name">{{ node.name }}</text>
@@ -139,10 +153,16 @@ function toggle(folderId) {
 }
 
 /** 图标地址：preset 用 static 资源，custom 用父级回填的临时 URL */
+/** wot 字体图标：只存名字，渲染走 <wd-icon> 而不是图片 */
+function isWot(icon) {
+  return !!(icon && icon.type === 'wot' && icon.value)
+}
+
 function iconSrc(node) {
   const icon = node && node.icon
   if (!icon || !icon.value) return ''
   if (icon.type === 'preset') return `/static/icons/${icon.value}.svg`
+  if (icon.type === 'wot') return ''
   return icon.url || ''
 }
 
@@ -239,6 +259,13 @@ defineExpose({ expandAll, collapseAll })
   width: calc(15px * var(--mm-ui-scale, 1));
   height: calc(15px * var(--mm-ui-scale, 1));
   flex: none;
+}
+
+.mm-tree__wot-icon {
+  flex: none;
+  width: calc(15px * var(--mm-ui-scale, 1));
+  height: calc(15px * var(--mm-ui-scale, 1));
+  transform: scale(var(--mm-ui-scale, 1));
 }
 
 .mm-tree__icon {

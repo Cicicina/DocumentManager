@@ -61,12 +61,12 @@
     },
     "icon": {
       "bsonType": "object",
-      "description": "文件夹图标 {type: preset|custom, value: 预制图标 key 或云存储 fileID}",
+      "description": "文件夹图标 {type: preset|wot|custom, value: 预制图标 key / wot 图标名 / 云存储 fileID}",
       "properties": {
         "type": {
           "bsonType": "string",
           "description": "preset 预制 / custom 自定义上传",
-          "enum": ["preset", "custom"]
+          "enum": ["preset", "wot", "custom"]
         },
         "value": {
           "bsonType": "string",

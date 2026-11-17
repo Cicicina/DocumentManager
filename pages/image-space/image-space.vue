@@ -1,11 +1,5 @@
 <template>
   <view class="mm-image-space">
-    <view class="mm-image-space__head">
-      <text class="mm-image-space__title">图片空间</text>
-      <view class="mm-image-space__icon-btn" title="刷新" aria-label="刷新" @click="loadImages">
-        <uni-icons type="refresh" size="16" color="var(--mm-text-weak)" />
-      </view>
-    </view>
     <text class="mm-image-space__tip">按住图片拖动可调整顺序，越靠前越优先插入文档</text>
 
     <view class="mm-image-space__body">
@@ -40,6 +34,7 @@
     </view>
 
     <wd-toast />
+    <wd-message-box selector="mm-image-space" />
   </view>
 </template>
 
@@ -52,6 +47,9 @@ import { onMounted, ref } from 'vue'
 import { formatSize } from '@/common/utils/format.js'
 import { list as listImages, getTempUrls, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { useImageDragSort } from '@/common/utils/drag-order.js'
+import { useConfirm } from '@/common/utils/confirm.js'
+
+const { confirm } = useConfirm('mm-image-space')
 
 const imageList = ref([])
 const imageUrls = ref({})
@@ -125,18 +123,17 @@ async function removeImage(item) {
   const quoted = names.length > 0 ? `《${names.join('、')}》` : ''
   const suffix = count > names.length ? ` 等 ${count} 篇` : ''
 
-  uni.showModal({
+  confirm({
     title: '图片被文档引用',
     content: `该图片被${quoted}${suffix}引用，删除会导致文档中的图片无法显示。是否仍要删除？`,
     confirmText: '仍要删除',
-    confirmColor: '#e54d42',
-    success: async (res) => {
-      if (!res.confirm) return
-      const second = await removeImages({ image_ids: [item._id], force: true })
-      if (second.code === 0) {
-        uni.showToast({ title: '已清理', icon: 'none' })
-        await loadImages()
-      }
+    danger: true
+  }).then(async ok => {
+    if (!ok) return
+    const second = await removeImages({ image_ids: [item._id], force: true })
+    if (second.code === 0) {
+      uni.showToast({ title: '已清理', icon: 'none' })
+      await loadImages()
     }
   })
 }
@@ -154,37 +151,9 @@ function noop() {}
   font-size: calc(13px * var(--mm-font-scale, 1));
 }
 
-.mm-image-space__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: calc(40px * var(--mm-ui-scale, 1));
-  padding: 0 calc(16px * var(--mm-ui-scale, 1));
-  border-bottom: 1px solid var(--mm-border);
-  background-color: var(--mm-surface);
-}
-
-.mm-image-space__title {
-  font-size: calc(14px * var(--mm-ui-scale, 1));
-  font-weight: 600;
-  color: var(--mm-text);
-}
-
-.mm-image-space__icon-btn {
-  display: flex;
-  align-items: center;
-  padding: calc(4px * var(--mm-ui-scale, 1));
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.mm-image-space__icon-btn:hover {
-  background-color: var(--mm-surface-2);
-}
-
 .mm-image-space__tip {
   flex: none;
-  padding: calc(8px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   font-size: calc(11px * var(--mm-ui-scale, 1));
   line-height: 1.5;
   color: var(--mm-text-weak);

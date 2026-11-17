@@ -182,14 +182,14 @@ function toConfigView(config) {
 }
 
 /**
- * 归一化根节点图标：只接受 {type:'preset'|'custom', value:string}，其余一律 null。
+ * 归一化根节点图标：只接受 {type:'preset'|'wot'|'custom', value:string}，其余一律 null。
  * 与 mm-file 的 normalizeIcon 保持同一形状，前端可直接复用同一套渲染逻辑。
  * @param {object|null} icon
  * @returns {{type:string,value:string}|null}
  */
 function normalizeIcon(icon) {
   if (!icon || typeof icon !== 'object') return null
-  const type = icon.type === 'preset' || icon.type === 'custom' ? icon.type : ''
+  const type = ['preset', 'wot', 'custom'].indexOf(icon.type) !== -1 ? icon.type : ''
   const value = typeof icon.value === 'string' ? icon.value.trim() : ''
   if (!type || !value) return null
   return { type, value }

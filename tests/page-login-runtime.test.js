@@ -107,6 +107,7 @@ function createPageDeps(options) {
     onMounted: cb => { calls.lifecycles.onMounted = cb },
     onUnmounted: cb => { calls.lifecycles.onUnmounted = cb },
     useToast: () => ({ show: text => calls.toasts.push(text) }),
+    useConfirm: () => ({ confirm: async () => false }),
     useAppStore: () => store,
     // 真实常量
     ANONYMOUS_USER_ID: opts.constants.ANONYMOUS_USER_ID,

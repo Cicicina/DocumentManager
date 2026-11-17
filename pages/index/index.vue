@@ -185,8 +185,10 @@
       <view v-if="!isMobile" class="mm-pane mm-pane--list">
         <mm-file-list
           :files="store.state.files"
+          :folders="currentChildFolders"
           :loading="fileLoading"
             @open="handleOpenFile"
+            @open-folder="handleFolderSelect"
             @create-file="handleCreateFile"
             @upload="handleUpload"
             @import="handleImport"
@@ -351,8 +353,10 @@
         <view class="mm-drawer__list">
           <mm-file-list
             :files="store.state.files"
+            :folders="currentChildFolders"
             :loading="fileLoading"
             @open="handleDrawerOpenFile"
+            @open-folder="handleDrawerFolderSelect"
             @create-file="handleCreateFile"
             @upload="handleUpload"
             @import="handleImport"
@@ -485,8 +489,9 @@
       </view>
     </wd-popup>
 
-    <!-- 轻提示挂载点（必需） -->
+    <!-- 轻提示 / 确认框挂载点（必需） -->
     <wd-toast />
+    <wd-message-box selector="mm-index" />
   </view>
 </template>
 
@@ -503,6 +508,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useToast } from 'wot-design-uni'
+import { useConfirm } from '@/common/utils/confirm.js'
 import { useAppStore } from '@/common/store/index.js'
 import { ANONYMOUS_USER_ID, CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
@@ -543,6 +549,7 @@ import {
 
 const store = useAppStore()
 const toast = useToast()
+const { confirm } = useConfirm('mm-index')
 
 /**
  * 本页是否已完成一次登录态判定 / 失效引导。
@@ -688,6 +695,12 @@ const themeIcon = computed(() => {
  * 若在配置回来之前渲染，关闭账号功能时顶栏会先闪一下登录按钮。
  */
 const accountEnabled = computed(() => store.state.ready && store.state.config.account_enabled !== false)
+
+/** 当前目录下的子文件夹：listFiles 只返回文档，子目录从完整目录树里派生 */
+const currentChildFolders = computed(() => {
+  const tree = Array.isArray(store.state.tree) ? store.state.tree : []
+  return tree.filter(node => node && (node.parent_id || '') === currentFolderId.value)
+})
 
 /** 提纯纯文本：唯一 offset 坐标系，供阅读器与批注使用 */
 const plainText = computed(() => {
@@ -1226,17 +1239,13 @@ async function handleRenameFolder(node) {
 
 function handleRemoveFolder(node) {
   if (!node) return
-  uni.showModal({
-    title: '删除文件夹',
-    content: '文件夹及其内容将移入回收站',
-    success: async (res) => {
-      if (!res.confirm) return
-      const result = await softDelete({ file_ids: [node._id] })
-      if (result.code === 0) {
-        toast.show('已移入回收站')
-        await loadTree()
-        await loadFiles(currentFolderId.value)
-      }
+  confirm({ title: '删除文件夹', content: '文件夹及其内容将移入回收站' }).then(async ok => {
+    if (!ok) return
+    const result = await softDelete({ file_ids: [node._id] })
+    if (result.code === 0) {
+      toast.show('已移入回收站')
+      await loadTree()
+      await loadFiles(currentFolderId.value)
     }
   })
 }
@@ -1298,7 +1307,7 @@ function handleChangeIconRoot() {
 }
 
 /**
- * 归一化图标结构：云端 normalizeIcon 只接受 {type:'preset'|'custom', value:string}，
+ * 归一化图标结构：云端 normalizeIcon 接受 {type:'preset'|'wot'|'custom', value:string}，
  * 而本地草稿的 custom 图标还带 url（本地预览用）。这里剥掉前端专用字段，
  * 同时把结构非法的图标拦在本地，避免发出必然失败的请求让用户只看到笼统提示。
  * @param {object|null} icon 选择器草稿
@@ -1306,7 +1315,7 @@ function handleChangeIconRoot() {
  */
 function toCloudIcon(icon) {
   if (!icon) return null
-  const type = icon.type === 'preset' || icon.type === 'custom' ? icon.type : ''
+  const type = ['preset', 'wot', 'custom'].indexOf(icon.type) !== -1 ? icon.type : ''
   const value = typeof icon.value === 'string' ? icon.value.trim() : ''
   if (!type || !value) return null
   return { type, value }
@@ -1392,17 +1401,13 @@ function handleDrawerOpenFile(file) {
 
 function handleBatchDelete(ids) {
   if (!ids || ids.length === 0) return
-  uni.showModal({
-    title: '删除',
-    content: '所选内容将移入回收站',
-    success: async (res) => {
-      if (!res.confirm) return
-      const result = await softDelete({ file_ids: ids })
-      if (result.code === 0) {
-        toast.show('已移入回收站')
-        await loadFiles(currentFolderId.value)
-        await loadTree()
-      }
+  confirm({ title: '删除', content: '所选内容将移入回收站' }).then(async ok => {
+    if (!ok) return
+    const result = await softDelete({ file_ids: ids })
+    if (result.code === 0) {
+      toast.show('已移入回收站')
+      await loadFiles(currentFolderId.value)
+      await loadTree()
     }
   })
 }
@@ -2075,13 +2080,9 @@ function goLoginWithShare(token) {
 /** 打开分享文档前处理未保存改动；返回 false 表示中止 */
 async function saveBeforeNavigate() {
   if (saveStatus.value !== 'dirty') return true
-  return await new Promise(resolve => {
-    uni.showModal({
-      title: '有未保存的改动',
-      content: '打开分享文档将放弃当前未保存的改动，是否继续？',
-      success: res => resolve(!!res.confirm),
-      fail: () => resolve(false)
-    })
+  return await confirm({
+    title: '有未保存的改动',
+    content: '打开分享文档将放弃当前未保存的改动，是否继续？'
   })
 }
 
@@ -2202,14 +2203,7 @@ async function inspectClipboard() {
     const { verifyShare } = await import('@/common/api/mm-share.js')
     const verified = await verifyShare({ token })
     if (verified.code === 0 && verified.data && verified.data.valid) {
-      const agreed = await new Promise(resolve => {
-        uni.showModal({
-          title: '检测到分享链接',
-          content: '是否打开这份共享文档？',
-          success: res => resolve(!!res.confirm),
-          fail: () => resolve(false)
-        })
-      })
+      const agreed = await confirm({ title: '检测到分享链接', content: '是否打开这份共享文档？' })
       if (agreed) {
         pendingShareToken.value = token
         await resolveShare()
@@ -2218,14 +2212,7 @@ async function inspectClipboard() {
     return
   }
   if (!store.state.currentFile || shareReadOnly.value) return
-  const agreed = await new Promise(resolve => {
-    uni.showModal({
-      title: '剪贴板内容',
-      content: '是否追加到当前文档末尾？',
-      success: res => resolve(!!res.confirm),
-      fail: () => resolve(false)
-    })
-  })
+  const agreed = await confirm({ title: '剪贴板内容', content: '是否追加到当前文档末尾？' })
   if (agreed) {
     // 只改 store，让既有 watch 置 dirty，由用户用现有保存按钮提交
     store.setEditor(`${store.state.editorContent}\n\n${text}`)
@@ -2367,7 +2354,7 @@ function cancelInput() {
  * 直接置 false 会让等待方永远挂着，必须走 cancelInput。
  */
 const POPUPS = [
-  { name: 'drawer', flag: drawerVisible },
+  { name: 'drawer', flag: drawerVisible, coexist: ['iconPicker'] },
   { name: 'outline', flag: outlineVisible },
   { name: 'annotation', flag: annotationVisible },
   { name: 'commentDetail', flag: commentDetailVisible },
@@ -2375,7 +2362,7 @@ const POPUPS = [
   { name: 'commentDialog', flag: commentDialogVisible },
   { name: 'share', flag: shareVisible },
   { name: 'imagePicker', flag: imagePickerVisible },
-  { name: 'iconPicker', flag: iconPickerVisible },
+  { name: 'iconPicker', flag: iconPickerVisible, coexist: ['drawer'] },
   { name: 'move', flag: moveVisible },
   { name: 'input', flag: inputVisible, close: cancelInput }
 ]
@@ -2386,8 +2373,13 @@ const POPUPS = [
  * @returns {void}
  */
 function closePopupsExcept(keep) {
+  const keepItem = POPUPS.find(item => item.name === keep)
+  const keepCoexist = (keepItem && keepItem.coexist) || []
   for (const item of POPUPS) {
-    if (item.name === keep) continue
+    if (item.name === keep || keepCoexist.indexOf(item.name) !== -1) continue
+    // 自身声明的共存项也不关：抽屉与图标选择器可叠加，关图标不会收起目录
+    const selfCoexist = item.coexist || []
+    if (keep && selfCoexist.indexOf(keep) !== -1) continue
     if (!item.flag || !item.flag.value) continue
     if (typeof item.close === 'function') item.close()
     else item.flag.value = false

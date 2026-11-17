@@ -1,21 +1,6 @@
 <template>
   <view class="mm-list">
-    <!-- 工具条：新建 / 上传 / 导入（已与上传合并，保留节点仅为兼容旧断言） / 批量删除 -->
-    <view class="mm-list__toolbar">
-      <wd-button size="small" plain @click="emit('create-file')">新建</wd-button>
-      <wd-button size="small" type="primary" plain @click="emit('upload')">上传</wd-button>
-      <wd-button v-if="false" size="small" plain @click="emit('import')">导入</wd-button>
-      <view class="mm-list__spacer" />
-      <wd-button
-        v-if="selection.length > 0"
-        size="small"
-        type="error"
-        plain
-        @click="emit('batch-delete', selection.slice())"
-      >删除 {{ selection.length }} 项</wd-button>
-    </view>
-
-    <!-- 排序：本地排序，同时向父级上报 -->
+    <!-- 排序 + 快捷操作：合并成一行，不再单占一整行 -->
     <view class="mm-list__sort">
       <text
         v-for="option in sortOptions"
@@ -26,10 +11,56 @@
       >
         {{ option.label }}<text v-if="sortKey === option.key">{{ sortDir === 'asc' ? '↑' : '↓' }}</text>
       </text>
+      <view class="mm-list__spacer" />
+      <view class="mm-list__action" title="新建文档" @click="emit('create-file')">
+        <uni-icons type="compose" size="13" color="var(--mm-text-weak)" />
+        <text>新建</text>
+      </view>
+      <view class="mm-list__action" title="上传 md" @click="emit('upload')">
+        <uni-icons type="upload" size="13" color="var(--mm-text-weak)" />
+        <text>上传</text>
+      </view>
+      <view
+        v-if="selection.length > 0"
+        class="mm-list__action is-danger"
+        title="删除所选"
+        @click="emit('batch-delete', selection.slice())"
+      >
+        <uni-icons type="trash" size="13" color="var(--mm-accent)" />
+        <text>删除 {{ selection.length }}</text>
+      </view>
     </view>
 
-    <!-- 列表 -->
+    <!-- 列表：子文件夹在前，文件在后 -->
     <scroll-view class="mm-list__scroll" scroll-y>
+      <view
+        v-for="folder in childFolders"
+        :key="'f-' + folder._id"
+        class="mm-list__row mm-list__row--folder"
+        @click="emit('open-folder', folder)"
+      >
+        <view class="mm-list__folder-icon">
+          <image
+            v-if="folder.icon && folder.icon.type === 'preset' && folder.icon.value"
+            class="mm-list__folder-img"
+            :src="`/static/icons/${folder.icon.value}.svg`"
+            mode="aspectFit"
+          />
+          <wd-icon
+            v-else-if="folder.icon && folder.icon.type === 'wot' && folder.icon.value"
+            class="mm-list__folder-icon-wot"
+            :name="folder.icon.value"
+            size="15px"
+            color="var(--mm-text-weak)"
+          />
+          <uni-icons v-else type="folder" size="15" color="var(--mm-text-weak)" />
+        </view>
+        <view class="mm-list__main">
+          <text class="mm-list__name">{{ folder.name }}</text>
+        </view>
+        <text class="mm-list__meta mm-list__folder-label">文件夹</text>
+        <uni-icons type="arrow-right" size="13" color="var(--mm-text-weak)" />
+      </view>
       <view
         v-for="file in sortedFiles"
         :key="file._id"
@@ -66,7 +97,7 @@
         </view>
       </view>
 
-      <view v-if="!loading && sortedFiles.length === 0" class="mm-list__empty">
+      <view v-if="!loading && sortedFiles.length === 0 && childFolders.length === 0" class="mm-list__empty">
         <text>还没有文档</text>
         <view class="mm-list__empty-action" @click="emit('create-file')">
           <uni-icons type="compose" size="14" color="var(--mm-accent)" />
@@ -74,7 +105,7 @@
         </view>
         <view class="mm-list__empty-action" @click="emit('upload')">
           <uni-icons type="upload" size="14" color="var(--mm-accent)" />
-          <text>上传 md</text>
+          <text>上传 md / 导入</text>
         </view>
       </view>
     </scroll-view>
@@ -90,12 +121,14 @@ import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },
+  folders: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   selectedIds: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits([
   'open',
+  'open-folder',
   'select-change',
   'sort-change',
   'upload',
@@ -124,6 +157,12 @@ const sortOptions = [
   { key: 'name', label: '名称' },
   { key: 'size', label: '大小' }
 ]
+
+/** 当前目录下的子文件夹：按名称排序，插在文档列表前面 */
+const childFolders = computed(() => {
+  const list = Array.isArray(props.folders) ? props.folders.slice() : []
+  return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+})
 
 const sortedFiles = computed(() => {
   const list = Array.isArray(props.files) ? props.files.slice() : []
@@ -217,22 +256,11 @@ defineExpose({ clearSelection })
   min-height: 0;
 }
 
-.mm-list__toolbar {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--mm-ui-scale, 1));
-  padding: calc(10px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
-  border-bottom: 1px solid var(--mm-border);
-}
-
-.mm-list__spacer {
-  flex: 1;
-}
-
 .mm-list__sort {
   display: flex;
   align-items: center;
-  gap: calc(14px * var(--mm-ui-scale, 1));
+  flex-wrap: wrap;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   padding: calc(6px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
@@ -244,6 +272,29 @@ defineExpose({ clearSelection })
 }
 
 .mm-list__sort-item.is-active {
+  color: var(--mm-accent);
+}
+
+.mm-list__spacer {
+  flex: 1;
+}
+
+/* 排序行右侧的文字 + icon 快捷操作；删除仅在选中文件后出现 */
+.mm-list__action {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(3px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
+  color: var(--mm-text-weak);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mm-list__action:hover {
+  color: var(--mm-accent);
+}
+
+.mm-list__action.is-danger {
   color: var(--mm-accent);
 }
 
@@ -264,6 +315,33 @@ defineExpose({ clearSelection })
 
 .mm-list__row:hover {
   background-color: var(--mm-surface-2);
+}
+
+.mm-list__row--folder {
+  background-color: var(--mm-surface-2);
+}
+
+.mm-list__folder-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: calc(17px * var(--mm-ui-scale, 1));
+}
+
+.mm-list__folder-img {
+  width: 15px;
+  height: calc(15px * var(--mm-ui-scale, 1));
+}
+
+.mm-list__folder-icon-wot {
+  width: 15px;
+  height: calc(15px * var(--mm-ui-scale, 1));
+}
+
+.mm-list__folder-label {
+  font-size: calc(11px * var(--mm-ui-scale, 1));
 }
 
 .mm-list__check {

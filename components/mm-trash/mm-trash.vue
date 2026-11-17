@@ -1,12 +1,5 @@
 <template>
   <view class="mm-trash">
-    <view class="mm-trash__head">
-      <text class="mm-trash__title">回收站</text>
-      <view class="mm-trash__icon-btn" title="刷新" aria-label="刷新" @click="refresh">
-        <uni-icons type="refresh" size="16" color="var(--mm-text-weak)" />
-      </view>
-    </view>
-
     <text class="mm-trash__hint">还原会放回原位置；彻底删除不可恢复，会同时清理云端文件与关联批注。</text>
 
     <view class="mm-trash__body">
@@ -51,6 +44,7 @@
         @click="purgeSelected"
       >彻底删除</wd-button>
     </view>
+    <wd-message-box selector="mm-trash" />
   </view>
 </template>
 
@@ -62,6 +56,9 @@
  */
 import { onMounted, ref } from 'vue'
 import { listTrash, restore, purgeDelete } from '@/common/api/mm-file.js'
+import { useConfirm } from '@/common/utils/confirm.js'
+
+const { confirm } = useConfirm('mm-trash')
 
 const emit = defineEmits(['changed'])
 
@@ -119,19 +116,19 @@ async function restoreSelected() {
 
 function purgeSelected() {
   if (selection.value.length === 0) return
-  uni.showModal({
+  confirm({
     title: '彻底删除',
     content: '文件将从云端永久删除，不可恢复',
     confirmText: '彻底删除',
-    success: async (modalRes) => {
-      if (!modalRes.confirm) return
-      const res = await purgeDelete({ file_ids: selection.value.slice() })
-      if (res.code === 0) {
-        uni.showToast({ title: '已彻底删除', icon: 'none' })
-        selection.value = []
-        await refresh()
-        emit('changed')
-      }
+    danger: true
+  }).then(async ok => {
+    if (!ok) return
+    const res = await purgeDelete({ file_ids: selection.value.slice() })
+    if (res.code === 0) {
+      uni.showToast({ title: '已彻底删除', icon: 'none' })
+      selection.value = []
+      await refresh()
+      emit('changed')
     }
   })
 }
@@ -154,36 +151,9 @@ defineExpose({ refresh })
   background-color: var(--mm-surface);
 }
 
-.mm-trash__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: calc(40px * var(--mm-ui-scale, 1));
-  padding: 0 calc(16px * var(--mm-ui-scale, 1));
-  border-bottom: 1px solid var(--mm-border);
-}
-
-.mm-trash__title {
-  font-size: calc(14px * var(--mm-ui-scale, 1));
-  font-weight: 600;
-  color: var(--mm-text);
-}
-
-.mm-trash__icon-btn {
-  display: flex;
-  align-items: center;
-  padding: calc(4px * var(--mm-ui-scale, 1));
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.mm-trash__icon-btn:hover {
-  background-color: var(--mm-surface-2);
-}
-
 .mm-trash__hint {
   display: block;
-  padding: calc(8px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
   font-size: calc(11px * var(--mm-ui-scale, 1));
   line-height: 1.5;
   color: var(--mm-text-weak);

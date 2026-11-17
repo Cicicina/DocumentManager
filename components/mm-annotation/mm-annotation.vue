@@ -39,6 +39,7 @@
         </view>
       </view>
     </wd-popup>
+    <wd-message-box selector="mm-annotation" />
   </view>
 </template>
 
@@ -52,6 +53,9 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getSelectionOffsets } from '@/common/utils/selection.js'
+import { useConfirm } from '@/common/utils/confirm.js'
+
+const { confirm } = useConfirm('mm-annotation')
 
 const props = defineProps({
   comments: { type: Array, default: () => [] },
@@ -184,13 +188,8 @@ function startEdit(item) {
 
 function confirmRemove(item) {
   if (!item) return
-  uni.showModal({
-    title: '删除批注',
-    content: '这条批注将被删除',
-    success: (res) => {
-      if (!res.confirm) return
-      emit('remove', { comment_id: item._id })
-    }
+  confirm({ title: '删除批注', content: '这条批注将被删除', danger: true }).then(ok => {
+    if (ok) emit('remove', { comment_id: item._id })
   })
 }
 

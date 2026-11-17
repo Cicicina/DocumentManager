@@ -105,7 +105,7 @@ test('mm-files 覆盖 PRD R02 全部字段（含扩展字段 type / icon / delet
   }
 
   assert.deepEqual(properties.type.enum, ['file', 'folder'])
-  assert.deepEqual(properties.icon.properties.type.enum, ['preset', 'custom'])
+  assert.deepEqual(properties.icon.properties.type.enum, ['preset', 'wot', 'custom'])
   assert.equal(properties.version.bsonType, 'int')
   assert.equal(properties.version.defaultValue, 0)
   assert.equal(properties.is_delete.bsonType, 'bool')

@@ -1,14 +1,5 @@
 <template>
   <view class="mm-shares">
-    <view class="mm-shares__head">
-      <text class="mm-shares__title">分享列表</text>
-      <view class="mm-shares__head-actions">
-        <view class="mm-shares__icon-btn" title="刷新" aria-label="刷新" @click="refresh">
-          <uni-icons type="refresh" size="16" color="var(--mm-text-weak)" />
-        </view>
-      </view>
-    </view>
-
     <text class="mm-shares__hint">作废后链接立即失效，无法恢复。无限期分享也可在此提前作废。</text>
 
     <view class="mm-shares__body">
@@ -32,18 +23,13 @@
         <text class="mm-shares__meta">
           {{ formatTime(item.created_at) }} 创建 · {{ expireText(item) }} · 打开 {{ item.access_count }} 次
         </text>
-        <view class="mm-shares__row-actions">
-          <wd-button size="small" plain :disabled="item.status !== 'active'" @click="copyLink(item)">复制链接</wd-button>
-          <wd-button
-            size="small"
-            type="error"
-            plain
-            :disabled="item.status === 'revoked'"
-            @click="revokeItem(item)"
-          >作废</wd-button>
+        <view v-if="item.status === 'active'" class="mm-shares__row-actions">
+          <wd-button size="small" plain @click="copyLink(item)">复制链接</wd-button>
+          <wd-button size="small" type="error" plain @click="revokeItem(item)">作废</wd-button>
         </view>
       </view>
     </view>
+    <wd-message-box selector="mm-shares" />
   </view>
 </template>
 
@@ -61,6 +47,9 @@
 import { onMounted, ref } from 'vue'
 import { listShares, revokeShare } from '@/common/api/mm-share.js'
 import { writeShareUrl } from '@/common/utils/clipboard.js'
+import { useConfirm } from '@/common/utils/confirm.js'
+
+const { confirm } = useConfirm('mm-shares')
 
 const emit = defineEmits(['changed'])
 
@@ -123,13 +112,11 @@ async function copyLink(item) {
 }
 
 async function revokeItem(item) {
-  const confirmed = await new Promise(resolve => {
-    uni.showModal({
-      title: '作废分享',
-      content: `作废后「${item.doc_name || '该文档'}」的这条分享链接会立即失效，且无法恢复。`,
-      success: res => resolve(!!res.confirm),
-      fail: () => resolve(false)
-    })
+  const confirmed = await confirm({
+    title: '作废分享',
+    content: `作废后「${item.doc_name || '该文档'}」的这条分享链接会立即失效，且无法恢复。`,
+    confirmText: '仍要作废',
+    danger: true
   })
   if (!confirmed) return
   const res = await revokeShare({ share_id: item._id })
@@ -149,41 +136,9 @@ async function revokeItem(item) {
   background-color: var(--mm-surface);
 }
 
-.mm-shares__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: calc(40px * var(--mm-ui-scale, 1));
-  padding: 0 calc(16px * var(--mm-ui-scale, 1));
-}
-
-.mm-shares__title {
-  font-size: calc(14px * var(--mm-ui-scale, 1));
-  font-weight: 600;
-  color: var(--mm-text);
-}
-
-.mm-shares__head-actions {
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--mm-ui-scale, 1));
-}
-
-.mm-shares__icon-btn {
-  display: flex;
-  align-items: center;
-  padding: calc(4px * var(--mm-ui-scale, 1));
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.mm-shares__icon-btn:hover {
-  background-color: var(--mm-surface-2);
-}
-
 .mm-shares__hint {
   display: block;
-  padding: 0 calc(16px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
   font-size: calc(11px * var(--mm-ui-scale, 1));
   line-height: 1.5;
   color: var(--mm-text-weak);
