@@ -11,6 +11,16 @@
       <text class="mm-tree__name">全部文档</text>
     </view>
 
+    <!-- 常驻新建入口：目录非空时也要有地方建，且默认建在当前选中的目录下 -->
+    <view
+      class="mm-tree__row mm-tree__row--create"
+      @click="emitCreate(currentId)"
+    >
+      <view class="mm-tree__arrow is-placeholder" />
+      <uni-icons class="mm-tree__icon" type="plus" size="14" color="var(--mm-text-weak)" />
+      <text class="mm-tree__name">新建文件夹</text>
+    </view>
+
     <!-- 扁平渲染 + 层级缩进，支持不限层嵌套 -->
     <view
       v-for="node in visibleNodes"
@@ -175,6 +185,11 @@ defineExpose({ expandAll, collapseAll })
 .mm-tree__row.is-active {
   background-color: var(--mm-accent-weak);
   color: var(--mm-accent);
+}
+
+.mm-tree__row--create {
+  padding-left: 6px;
+  color: var(--mm-text-weak);
 }
 
 .mm-tree__arrow {

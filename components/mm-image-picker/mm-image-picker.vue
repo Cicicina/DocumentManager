@@ -37,7 +37,8 @@
               <uni-icons type="image" size="18" color="var(--mm-text-weak)" />
             </view>
             <text v-if="item.ref_count > 0" class="mm-image-picker__refs">{{ item.ref_count }}</text>
-            <text class="mm-image-picker__size">{{ formatSize(item.size) }}</text>
+            <!-- 大小 + 上传者：手机上也能看到，不依赖悬浮 title -->
+            <text class="mm-image-picker__size">{{ formatSize(item.size) }} · {{ item.uploader_nickname || '访客' }}</text>
           </view>
         </view>
       </scroll-view>

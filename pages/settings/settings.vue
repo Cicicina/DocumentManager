@@ -22,7 +22,7 @@
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
         <view class="mm-settings-page__row">
-          <text class="mm-settings-page__label">读取剪贴板并询问是否追加到文档</text>
+          <text class="mm-settings-page__label">读取剪贴板功能</text>
           <wd-switch v-model="clipboardAppendEnabled" />
         </view>
         <view class="mm-settings-page__row">
@@ -87,7 +87,8 @@
               <view class="mm-image-space__remove" @click="removeImage(item)">
                 <uni-icons type="trash" size="12" color="var(--mm-text)" />
               </view>
-              <text class="mm-image-space__size">{{ formatSize(item.size) }}</text>
+              <!-- 大小 + 上传者：尺寸/来源一眼可见，不必依赖悬浮 title -->
+              <text class="mm-image-space__size">{{ formatSize(item.size) }} · {{ item.uploader_nickname || '访客' }}</text>
             </view>
           </view>
         </scroll-view>
@@ -269,6 +270,8 @@ function noop() {
   min-height: 100vh;
   background-color: var(--mm-bg);
   color: var(--mm-text);
+  /* 跟随字号档位：在设置页改档位能立刻看到变化，不用回文档页验证 */
+  font-size: calc(13px * var(--mm-font-scale, 1));
 }
 
 .mm-settings-page__inner {
@@ -293,7 +296,7 @@ function noop() {
 }
 
 .mm-settings-page__label {
-  font-size: 13px;
+  font-size: 1em;
   color: var(--mm-text);
 }
 

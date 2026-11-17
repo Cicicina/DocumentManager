@@ -222,6 +222,13 @@ defineExpose({ focus })
   border-bottom: 1px solid var(--mm-border);
 }
 
+/* 搜索框占满剩余宽度：wd-input 根节点默认不伸缩，会缩成一小段 */
+.mm-search__head :deep(.wd-input) {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
 .mm-search__close {
   flex: none;
   padding: 4px;

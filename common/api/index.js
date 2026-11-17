@@ -247,6 +247,53 @@ export function handleLoginExpired() {
 }
 
 /**
+ * 从 SDK 抛出的错误里解析业务码。
+ *
+ * uniCloud 客户端 SDK 在不同版本 / 不同场景下把业务码放在三个位置：
+ * error.errCode（云对象返回值被包装）、error.code（标准 Error）、
+ * error.detail.errCode（importObject 抛出的 detail 包装）。
+ * 只读前两个会让 1001/1003 这类业务码漏判，最终统一显示「服务异常，请重试」。
+ *
+ * @param {object} error 捕获到的错误
+ * @returns {number} 可用的业务码，取不到返回 NaN
+ */
+function resolveErrorCode(error) {
+  if (!error || typeof error !== 'object') return NaN
+  const detail = error.detail && typeof error.detail === 'object' ? error.detail : null
+  const raw = error.errCode !== undefined ? error.errCode
+    : error.code !== undefined ? error.code
+      : detail ? detail.errCode : undefined
+  const code = Number(raw)
+  return Number.isFinite(code) ? code : NaN
+}
+
+/**
+ * 从 SDK 抛出的错误里解析提示文案（同样兼容 detail 包装）。
+ * @param {object} error 捕获到的错误
+ * @param {number} code 业务码
+ * @returns {string} 提示文案
+ */
+function resolveErrorMessage(error, code) {
+  const detail = error && error.detail && typeof error.detail === 'object' ? error.detail : null
+  return (error && (error.errMsg || error.message))
+    || (detail && detail.errMsg)
+    || ERR_MESSAGE[code]
+    || ERR_MESSAGE[ERR.INTERNAL_ERROR]
+}
+
+/**
+ * 从 SDK 抛出的错误里解析结构化明细（如 4011 的引用文档列表）。
+ * @param {object} error 捕获到的错误
+ * @returns {any} 明细，取不到返回 null
+ */
+function resolveErrorData(error) {
+  if (error && Object.prototype.hasOwnProperty.call(error, 'data')) return error.data
+  const detail = error && error.detail && typeof error.detail === 'object' ? error.detail : null
+  if (detail && Object.prototype.hasOwnProperty.call(detail, 'data')) return detail.data
+  return null
+}
+
+/**
  * 调用云对象方法。任何情况下都不抛异常，始终返回归一化结果。
  *
  * @param {string} objKey 云对象键（mmFile / mmComment / mmSearch / mmSettings / mmImage）
@@ -280,14 +327,12 @@ export async function call(objKey, method, param = {}) {
       return { code: ERR.UNAUTHORIZED, data: null, message: ERR_MESSAGE[ERR.UNAUTHORIZED] }
     }
     // 明确的业务错误码透传云端文案（如「图标格式不正确」），500/9999 仍统一兜底
-    const rawCode = error && (error.errCode !== undefined ? error.errCode : error.code)
-    const code = Number(rawCode)
+    const code = resolveErrorCode(error)
     if (Number.isFinite(code) && PASS_THROUGH_CODES.indexOf(code) >= 0) {
-      const message = (error && (error.errMsg || error.message)) || ERR_MESSAGE[code] || ERR_MESSAGE[ERR.INTERNAL_ERROR]
+      const message = resolveErrorMessage(error, code)
       showErrorToast(message)
       // 云端业务错误可能带结构化明细（如 4011 的引用文档列表），必须透传否则前端只剩错误码
-      const data = error && Object.prototype.hasOwnProperty.call(error, 'data') ? error.data : null
-      return { code, data, message }
+      return { code, data: resolveErrorData(error), message }
     }
     const message = ERR_MESSAGE[ERR.INTERNAL_ERROR]
     showErrorToast(message)
@@ -313,12 +358,9 @@ export async function callSilent(objKey, method, param = {}) {
   } catch (error) {
     // 静默只表示不弹全局 Toast，仍需把明确业务码与明细交回调用方（如 4011 引用确认）；
     // 500 / 9999 等非业务码继续统一兜底，避免把云端内部异常当业务提示暴露出去。
-    const rawCode = error && (error.errCode !== undefined ? error.errCode : error.code)
-    const code = Number(rawCode)
+    const code = resolveErrorCode(error)
     if (Number.isFinite(code) && PASS_THROUGH_CODES.indexOf(code) >= 0) {
-      const message = (error && (error.errMsg || error.message)) || ERR_MESSAGE[code] || ERR_MESSAGE[ERR.INTERNAL_ERROR]
-      const data = error && Object.prototype.hasOwnProperty.call(error, 'data') ? error.data : null
-      return { code, data, message }
+      return { code, data: resolveErrorData(error), message: resolveErrorMessage(error, code) }
     }
     return {
       code: ERR.INTERNAL_ERROR,

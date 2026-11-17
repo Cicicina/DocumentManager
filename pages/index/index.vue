@@ -35,7 +35,7 @@
           aria-label="登录"
           @click="goLogin"
         >
-          <wd-icon name="person" size="17px" color="var(--mm-text)" />
+          <uni-icons type="person" size="17" color="var(--mm-text)" />
         </view>
         <view class="mm-topbar__icon-btn" title="搜索" aria-label="搜索" @click="searchVisible = true">
           <uni-icons type="search" size="17" color="var(--mm-text)" />
@@ -46,11 +46,8 @@
           :aria-label="'主题：' + themeLabel"
           @click="cycleTheme"
         >
-          <wd-icon
-            :name="store.state.theme === 'dark' ? 'moon' : 'sunny'"
-            size="17px"
-            color="var(--mm-text)"
-          />
+          <!-- 用静态 SVG：wd-icon / uni-icons 都没有 sun、moon 字形，之前是空渲染 -->
+          <image class="mm-topbar__icon-img" :src="themeIcon" mode="aspectFit" />
         </view>
         <view class="mm-topbar__icon-btn" title="设置" aria-label="设置" @click="goSettings">
           <uni-icons type="gear" size="17" color="var(--mm-text)" />
@@ -82,7 +79,7 @@
     <!-- 正文有活动选区时浮动「添加批注」，与底部保存按钮分区放置不重叠 -->
     <view
       class="mm-add-annotation-fab"
-      :class="{ 'is-visible': !!annotationSelection && !!store.state.currentFile }"
+      :class="{ 'is-visible': hasActiveSelection && !!store.state.currentFile }"
       title="添加批注"
       aria-label="添加批注"
       @click="openShellComment"
@@ -90,38 +87,21 @@
       <wd-button size="small" plain>添加批注</wd-button>
     </view>
 
-    <!-- 被批注文字旁的气泡：渲染在阅读器外层，避免 overflow 裁切 -->
-    <view
-      v-if="commentBubble"
-      class="mm-comment-bubble"
-      :style="commentBubbleStyle"
-      @click="openAllComments"
-    >
-      <text class="mm-comment-bubble__text">{{ truncateBubble(commentBubble.comment) }}</text>
-      <text class="mm-comment-bubble__more">查看全部</text>
-    </view>
-
-    <!-- H5 剪贴板静默读失败时的显式入口与最终兜底输入框 -->
-    <view
-      v-if="clipboardReadFailed"
-      class="mm-clipboard-fab"
-      title="读取剪贴板"
-      aria-label="读取剪贴板"
-      @click="inspectClipboard"
-    >
-      <wd-button size="small" plain>读取剪贴板</wd-button>
-    </view>
-    <wd-popup
-      v-model="clipboardInputVisible"
-      position="center"
-      custom-style="width:min(420px,88vw);border-radius:12px;"
-    >
+    <!--
+      批注详情：点正文里的高亮文字或它旁边的气泡打开。
+      底部「全部批注」是列表视图，这里是单条全文（原文 / 批注 / 时间 / 批注人）。
+    -->
+    <wd-popup v-model="commentDetailVisible" position="center" custom-style="width:min(440px,90vw);border-radius:12px;">
       <view class="mm-dialog">
-        <text class="mm-dialog__title">粘贴内容</text>
-        <wd-input v-model="clipboardInputText" placeholder="在此粘贴剪贴板内容" />
+        <text class="mm-dialog__title">批注详情</text>
+        <text class="mm-dialog__quote">{{ commentDetail.selected_text }}</text>
+        <text class="mm-dialog__text">{{ commentDetail.comment }}</text>
+        <view class="mm-dialog__meta">
+          <text>{{ formatCommentTime(commentDetail.created_at) }}</text>
+          <text v-if="store.state.config.account_enabled !== false">{{ commentDetail.nickname || '访客' }}</text>
+        </view>
         <view class="mm-dialog__actions">
-          <wd-button size="small" plain @click="clipboardInputVisible = false">取消</wd-button>
-          <wd-button size="small" type="primary" @click="usePastedClipboard">确定</wd-button>
+          <wd-button size="small" type="primary" @click="commentDetailVisible = false">关闭</wd-button>
         </view>
       </view>
     </wd-popup>
@@ -197,7 +177,9 @@
                 <uni-icons type="eye" size="15" color="var(--mm-text-weak)" />
                 <text class="mm-mode__action-label">预览</text>
               </view>
+              <!-- 没有批注时不显示入口，避免点开一个空列表 -->
               <view
+                v-if="store.state.comments.length"
                 class="mm-mode__action"
                 :class="{ 'is-active': annotationVisible }"
                 :title="annotationVisible ? '隐藏批注列表' : '显示批注列表'"
@@ -205,7 +187,7 @@
                 @click="annotationVisible = !annotationVisible"
               >
                 <uni-icons type="chat" size="15" color="var(--mm-text-weak)" />
-                <text class="mm-mode__action-label">批注</text>
+                <text class="mm-mode__action-label">批注列表</text>
               </view>
             </view>
 
@@ -233,7 +215,7 @@
           </view>
 
           <mm-annotation
-            v-if="annotationVisible"
+            v-if="annotationVisible && store.state.comments.length"
             class="mm-annotation-pane"
             :comments="store.state.comments"
             :plain-text="plainText"
@@ -413,33 +395,6 @@
       </view>
     </wd-popup>
 
-    <!-- 查看全部批注 -->
-    <wd-popup v-model="allCommentsVisible" position="bottom" custom-style="height:70vh;width:100%;left:0;right:0;border-radius:12px 12px 0 0;">
-      <view class="mm-comments-all">
-        <view class="mm-comments-all__head">
-          <text>全部批注</text>
-          <view class="mm-comments-all__close" aria-label="关闭" @click="allCommentsVisible = false">
-            <uni-icons type="closeempty" size="18" color="var(--mm-text-weak)" />
-          </view>
-        </view>
-        <scroll-view class="mm-comments-all__body" scroll-y>
-          <view
-            v-for="item in store.state.comments"
-            :key="item._id"
-            class="mm-comments-all__item"
-            @click="locateCommentFromList(item)"
-          >
-            <text class="mm-comments-all__quote">{{ truncateBubble(item.selected_text) }}</text>
-            <text class="mm-comments-all__text">{{ item.comment }}</text>
-            <view class="mm-comments-all__meta">
-              <text>{{ formatCommentTime(item.created_at) }}</text>
-              <text v-if="store.state.config.account_enabled && item.nickname">{{ item.nickname }}</text>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-    </wd-popup>
-
     <!-- 轻提示挂载点（必需） -->
     <wd-toast />
   </view>
@@ -517,13 +472,20 @@ const drawerVisible = ref(false)
 
 /** 批注列表是否展开；默认收起，避开批注组件 height:100% 把正文压成 0 的历史坑 */
 const annotationVisible = ref(false)
-/** 主壳缓存的正文活动选区，供浮动「添加批注」按钮使用 */
+/**
+ * 正文锚点缓存 与 按钮显隐标记必须分离：
+ * 点击「添加批注」按钮会让浏览器折叠选区并触发 selectionchange，
+ * 若把缓存一起清空，弹层就再也拿不到被选中的段落（曾经的 bug）。
+ * 折叠只影响可见性，锚点只在「换文档」或「提交成功」时清。
+ */
 const annotationSelection = ref(null)
-/** 批注气泡 + 输入弹层 + 全部批注弹窗 */
-const commentBubble = ref(null)
+const hasActiveSelection = ref(false)
+/** 单条批注详情弹层 */
+const commentDetailVisible = ref(false)
+const commentDetail = ref({})
+/** 新建批注输入弹层 */
 const commentDialogVisible = ref(false)
 const commentDialogText = ref('')
-const allCommentsVisible = ref(false)
 /** 分享只读标记：通过分享链接打开的文档不允许编辑 */
 const shareReadOnly = ref(false)
 
@@ -537,11 +499,6 @@ const shareVisible = ref(false)
 const shareTarget = ref(null)
 const shareExpire = ref(86400)
 const shareCreating = ref(false)
-
-/** H5 剪贴板降级入口与最终兜底输入框 */
-const clipboardReadFailed = ref(false)
-const clipboardInputVisible = ref(false)
-const clipboardInputText = ref('')
 
 /** 待处理分享令牌：onLoad query + storage 双保险 */
 const pendingShareToken = ref('')
@@ -602,6 +559,21 @@ const themeLabel = computed(() => {
   const map = { auto: '自动', light: '浅色', dark: '深色' }
   return map[store.state.theme] || '自动'
 })
+
+/** 当前实际生效的明暗（auto 跟随系统），用于选择顶栏主题图标 */
+const isDarkTheme = computed(() => {
+  if (store.state.theme === 'dark') return true
+  if (store.state.theme === 'light') return false
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  }
+  return false
+})
+
+/** 主题图标：静态 SVG，不依赖图标字体 */
+const themeIcon = computed(() =>
+  isDarkTheme.value ? '/static/icons/theme-moon.svg' : '/static/icons/theme-sun.svg'
+)
 
 /** 提纯纯文本：唯一 offset 坐标系，供阅读器与批注使用 */
 const plainText = computed(() => {
@@ -666,6 +638,10 @@ onUnmounted(() => {
   if (typeof document !== 'undefined') {
     document.removeEventListener('selectionchange', captureShellSelection)
   }
+  if (shellSelectionTimer) {
+    clearTimeout(shellSelectionTimer)
+    shellSelectionTimer = null
+  }
   if (typeof uni !== 'undefined' && uni && typeof uni.$off === 'function') {
     uni.$off('uni-id-pages-login-success', handleLoginSuccessSync)
   }
@@ -683,6 +659,11 @@ watch(() => store.state.ready, (value) => {
 // 编辑内容变化即视为未保存
 watch(() => store.state.editorContent, () => {
   if (saveStatus.value === 'saved') saveStatus.value = 'dirty'
+})
+
+// 切到编辑态就没有「正文选区」这个概念了，浮动添加批注按钮必须收起
+watch(mode, () => {
+  hasActiveSelection.value = false
 })
 
 function updateViewport() {
@@ -997,6 +978,10 @@ async function openDocument(file) {
   await Promise.all([reloadComments(file._id), loadImageUrlMap(content)])
   mode.value = 'read'
   activeCommentId.value = ''
+  // 换文档后旧锚点坐标系失效，必须清空
+  annotationSelection.value = null
+  hasActiveSelection.value = false
+  commentDetailVisible.value = false
   saveStatus.value = 'saved'
   if (!content) {
     toast.show(readError || '未读取到文档内容')
@@ -1543,27 +1528,17 @@ async function handleRemoveComment({ comment_id }) {
   }
 }
 
-/** 点击批注高亮：设置 active 并在 mark 旁显示气泡（兼容旧的直接 comment 形态） */
+/**
+ * 点击正文高亮（或其右侧气泡）：打开单条批注详情。
+ * 详情里给的是**原文全文**与**批注全文**，列表视图里才是截断态。
+ */
 function handleCommentClick(payload) {
   const comment = payload && payload.comment ? payload.comment : payload
-  activeCommentId.value = comment ? comment._id : ''
-  const rect = payload && payload.rect
-  if (!comment || !rect || typeof window === 'undefined') {
-    commentBubble.value = null
-    return
-  }
-  const width = 260
-  const height = 120
-  const left = Math.max(8, Math.min((rect.left + rect.right) / 2 - width / 2, window.innerWidth - width - 8))
-  const below = rect.bottom + 8
-  const top = below + height > window.innerHeight ? Math.max(8, rect.top - height - 8) : below
-  commentBubble.value = { comment, left, top }
+  if (!comment) return
+  activeCommentId.value = comment._id || ''
+  commentDetail.value = comment
+  commentDetailVisible.value = true
 }
-
-const commentBubbleStyle = computed(() => {
-  const b = commentBubble.value
-  return b ? `left:${b.left}px;top:${b.top}px;` : ''
-})
 
 /** 气泡与列表统一截断规则 */
 function truncateBubble(text) {
@@ -1579,45 +1554,44 @@ function formatCommentTime(value) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-function openAllComments() {
-  allCommentsVisible.value = true
-}
-
-function locateCommentFromList(item) {
-  handleLocateComment(item)
-  allCommentsVisible.value = false
-}
-
 /**
  * 主壳自己监听选区：批注列表收起时 mm-annotation 不渲染，
  * 浮动「添加批注」按钮仍需正确出现/隐藏。
+ *
+ * 关键：折叠态只关闭按钮，**不清空锚点**。用户点按钮的瞬间浏览器会折叠选区，
+ * 若这里把 annotationSelection 置空，一次性弹层就再也拿不到被批注的段落。
  */
-async function captureShellSelection() {
+let shellSelectionTimer = null
+
+function captureShellSelection() {
   if (typeof document === 'undefined' || typeof window === 'undefined') return
   const container = document.querySelector('.mm-viewer__body')
   if (!container) {
-    annotationSelection.value = null
+    hasActiveSelection.value = false
     return
   }
+  // 可见性同步判定，点按钮时按钮要立刻淡出，不能等防抖
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
-    annotationSelection.value = null
-    return
-  }
-  const { getSelectionOffsets } = await import('@/common/utils/selection.js')
-  annotationSelection.value = getSelectionOffsets(container, store.state.editorContent || '')
-}
+  const collapsed = !(selection && selection.rangeCount > 0 && !selection.isCollapsed)
+  hasActiveSelection.value = !collapsed
+  if (collapsed) return
 
-/** 批注子组件上报的选区状态（列表展开时同样驱动浮动按钮） */
-function handleAnnotationSelection(payload) {
-  const data = payload && typeof payload === 'object' && 'active' in payload
-    ? payload
-    : { active: !!payload, offsets: null }
-  annotationSelection.value = data.active ? (data.offsets || annotationSelection.value) : null
+  // 坐标换算较重，拖选过程合并成一次
+  if (shellSelectionTimer) clearTimeout(shellSelectionTimer)
+  shellSelectionTimer = setTimeout(async () => {
+    shellSelectionTimer = null
+    const { getSelectionOffsets } = await import('@/common/utils/selection.js')
+    const offsets = getSelectionOffsets(container, store.state.editorContent || '')
+    // 只在选到有效区间时覆盖：落在图片 alt / 表格间隙等无效位置时保留上次有效锚点
+    if (offsets) annotationSelection.value = offsets
+  }, 80)
 }
 
 function openShellComment() {
-  if (!annotationSelection.value) return
+  if (!annotationSelection.value) {
+    toast.show('请先在正文中选中文字')
+    return
+  }
   commentDialogText.value = ''
   commentDialogVisible.value = true
 }
@@ -1636,6 +1610,7 @@ async function submitShellComment() {
   })
   commentDialogVisible.value = false
   annotationSelection.value = null
+  hasActiveSelection.value = false
 }
 
 // ---------------- 只读分享 ----------------
@@ -1726,7 +1701,6 @@ async function resolveShare() {
     shareReadOnly.value = true
     store.openFile(data.doc, content, [])
     activeCommentId.value = ''
-    commentBubble.value = null
     mode.value = 'read'
     saveStatus.value = 'saved'
     await Promise.all([reloadComments(data.file_id), loadImageUrlMap(content)])
@@ -1737,8 +1711,14 @@ async function resolveShare() {
 }
 
 // ---------------- 剪贴板 ----------------
-/** onShow 检查剪贴板：分享链接询问是否打开，普通文本询问是否追加到当前文档 */
+/**
+ * 检查剪贴板：分享链接询问是否打开，普通文本询问是否追加到当前文档。
+ *
+ * 只在开关开启时读；读到内容后与上次处理过的文本比对，
+ * **只有新内容才继续走后续逻辑**，同一段文字不会被反复追问。
+ */
 async function inspectClipboard() {
+  if (uni.getStorageSync('mm_clipboard_append_enabled') === false) return
   let clipboard
   try {
     clipboard = await import('@/common/utils/clipboard.js')
@@ -1748,11 +1728,8 @@ async function inspectClipboard() {
   }
   const { readClipboard, parseShareUrl, getLastClipboard, setLastClipboard } = clipboard
   const text = await readClipboard()
-  if (!text) {
-    clipboardReadFailed.value = true
-    return
-  }
-  clipboardReadFailed.value = false
+  // H5 未授权时读不到内容：按需求不再提供「显式读取」按钮，安静跳过
+  if (!text) return
   if (text === getLastClipboard()) return
   setLastClipboard(text)
 
@@ -1777,8 +1754,6 @@ async function inspectClipboard() {
     return
   }
   if (!store.state.currentFile || shareReadOnly.value) return
-  const enabled = uni.getStorageSync('mm_clipboard_append_enabled')
-  if (enabled === false) return
   const agreed = await new Promise(resolve => {
     uni.showModal({
       title: '剪贴板内容',
@@ -1792,21 +1767,6 @@ async function inspectClipboard() {
     store.setEditor(`${store.state.editorContent}\n\n${text}`)
     toast.show('已追加，请点击保存')
   }
-}
-
-/** H5 显式读剪贴板仍失败时的最终兜底 */
-async function usePastedClipboard() {
-  const text = String(clipboardInputText.value || '').trim()
-  if (!text) return
-  if (store.state.currentFile && !shareReadOnly.value) {
-    store.setEditor(`${store.state.editorContent}\n\n${text}`)
-    toast.show('已追加，请点击保存')
-  }
-  const { setLastClipboard } = await import('@/common/utils/clipboard.js')
-  setLastClipboard(text)
-  clipboardInputVisible.value = false
-  clipboardInputText.value = ''
-  clipboardReadFailed.value = false
 }
 
 function handleLocateComment(payload) {
@@ -1979,11 +1939,17 @@ function cancelInput() {
 
 .mm-topbar__status.is-dirty,
 .mm-topbar__status.is-conflict {
-  background-color: var(--mm-accent);
+  background-color: var(--mm-warning);
 }
 
 .mm-topbar__status.is-saving {
   opacity: 0.5;
+}
+
+/* 顶栏图标统一 16px，image 形态用于图标字体里没有的字形 */
+.mm-topbar__icon-img {
+  width: 16px;
+  height: 16px;
 }
 
 .mm-topbar__icon-btn {
@@ -2047,41 +2013,6 @@ function cancelInput() {
   pointer-events: auto;
 }
 
-/* 批注气泡：fixed 定位绕开阅读器 overflow 裁切 */
-.mm-comment-bubble {
-  position: fixed;
-  z-index: 40;
-  width: 260px;
-  padding: 10px 12px;
-  border: 1px solid var(--mm-border);
-  border-radius: 8px;
-  background-color: var(--mm-surface);
-  box-shadow: var(--mm-shadow);
-  cursor: pointer;
-}
-
-.mm-comment-bubble__text {
-  display: block;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--mm-text);
-}
-
-.mm-comment-bubble__more {
-  display: block;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--mm-accent);
-}
-
-/* H5 剪贴板显式读取入口 */
-.mm-clipboard-fab {
-  position: fixed;
-  right: 16px;
-  bottom: 68px;
-  z-index: 19;
-}
-
 /* 批注输入弹层里引用的原文片段 */
 .mm-dialog__quote {
   display: block;
@@ -2091,6 +2022,23 @@ function cancelInput() {
   color: var(--mm-text-weak);
   background-color: var(--mm-surface-2);
   border-radius: 6px;
+}
+
+/* 批注详情：正文与元信息 */
+.mm-dialog__text {
+  display: block;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--mm-text);
+  white-space: pre-wrap;
+}
+
+.mm-dialog__meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--mm-text-weak);
 }
 
 /* 分享有效期档位 */
@@ -2115,62 +2063,6 @@ function cancelInput() {
   color: var(--mm-accent);
   border-color: var(--mm-accent);
   background-color: var(--mm-accent-weak);
-}
-
-/* 全部批注弹窗 */
-.mm-comments-all {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background-color: var(--mm-surface);
-}
-
-.mm-comments-all__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: none;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--mm-border);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.mm-comments-all__close {
-  padding: 4px;
-  cursor: pointer;
-}
-
-.mm-comments-all__body {
-  flex: 1;
-  min-height: 0;
-}
-
-.mm-comments-all__item {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--mm-border);
-  cursor: pointer;
-}
-
-.mm-comments-all__quote {
-  display: block;
-  font-size: 12px;
-  color: var(--mm-text-weak);
-}
-
-.mm-comments-all__text {
-  display: block;
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--mm-text);
-}
-
-.mm-comments-all__meta {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--mm-text-weak);
 }
 
 /* 主体三栏 */

@@ -21,18 +21,16 @@
   --mm-accent-weak: #E8F0F9;
   --mm-mark: #FFE9A8;
   --mm-success: #2E9E5B;
+  --mm-warning: #D99A2B;
+  --mm-code-block-bg: #282C34;
+  --mm-code-block-text: #A9B7C6;
+  --mm-code-inline-color: #3594F7;
+  --mm-code-inline-bg: rgba(59, 170, 250, .1);
   --mm-shadow: 0 2px 12px rgba(30, 33, 38, .06);
   --mm-radius: 10px;
   /* 字号档位基准：common/utils/font.js 写入 html[data-font] 后按档位覆盖 */
   --mm-font-scale: 1;
 }
-
-/* 字号五档：极大 / 大 / 中（默认） / 小 / 极小。正文用 em 相对单位，自动跟随 */
-html[data-font="xl"] { --mm-font-scale: 1.25; }
-html[data-font="lg"] { --mm-font-scale: 1.125; }
-html[data-font="md"] { --mm-font-scale: 1; }
-html[data-font="sm"] { --mm-font-scale: 0.9375; }
-html[data-font="xs"] { --mm-font-scale: 0.875; }
 
 /* 跟随系统深色偏好；手动指定浅色时让位给下面的显式规则 */
 @media (prefers-color-scheme: dark) {
@@ -47,6 +45,11 @@ html[data-font="xs"] { --mm-font-scale: 0.875; }
     --mm-accent-weak: #2A3A4C;
     --mm-mark: #6B5A22;
     --mm-success: #4CC784;
+    --mm-warning: #E7B45A;
+    --mm-code-block-bg: #1A1A1A;
+    --mm-code-block-text: #A9B7C6;
+    --mm-code-inline-color: #3594F7;
+    --mm-code-inline-bg: rgba(59, 170, 250, .1);
     --mm-shadow: 0 2px 12px rgba(0, 0, 0, .30);
     --mm-radius: 10px;
     --mm-font-scale: 1;
@@ -65,6 +68,11 @@ html[data-theme="light"] {
   --mm-accent-weak: #E8F0F9;
   --mm-mark: #FFE9A8;
   --mm-success: #2E9E5B;
+  --mm-warning: #D99A2B;
+  --mm-code-block-bg: #282C34;
+  --mm-code-block-text: #A9B7C6;
+  --mm-code-inline-color: #3594F7;
+  --mm-code-inline-bg: rgba(59, 170, 250, .1);
   --mm-shadow: 0 2px 12px rgba(30, 33, 38, .06);
   --mm-radius: 10px;
   --mm-font-scale: 1;
@@ -82,6 +90,11 @@ html[data-theme="dark"] {
   --mm-accent-weak: #2A3A4C;
   --mm-mark: #6B5A22;
   --mm-success: #4CC784;
+  --mm-warning: #E7B45A;
+  --mm-code-block-bg: #1A1A1A;
+  --mm-code-block-text: #A9B7C6;
+  --mm-code-inline-color: #3594F7;
+  --mm-code-inline-bg: rgba(59, 170, 250, .1);
   --mm-shadow: 0 2px 12px rgba(0, 0, 0, .30);
   --mm-radius: 10px;
   --mm-font-scale: 1;
@@ -119,89 +132,18 @@ body,
   color: var(--mm-accent);
 }
 
-/* ---------------- Markdown 阅读区样式层级 ---------------- */
+/* ---------------- Markdown 阅读区 ---------------- */
+/*
+ * 阅读视图的正文排版**不再在这里自定义**：mm-md-viewer 的正文容器带
+ * md-editor-preview 类，直接复用 md-editor-v3 预览面板的同一套排版规则
+ * （字号层级、行高、列表缩进、表格、行内代码、链接），
+ * 保证「阅读」与编辑器右侧「预览」逐像素一致。这里只保留容器宽度与换行。
+ */
 .mm-md {
   max-width: 760px;
   margin: 0 auto;
-  padding: 24px 20px 64px;
-  color: var(--mm-text);
-  line-height: 1.8;
-  font-size: 16px;
   word-wrap: break-word;
 }
-
-.mm-md h1,
-.mm-md h2,
-.mm-md h3,
-.mm-md h4,
-.mm-md h5,
-.mm-md h6 {
-  margin: 1.6em 0 .6em;
-  line-height: 1.35;
-  font-weight: 600;
-  color: var(--mm-text);
-}
-
-.mm-md h1 { font-size: 1.9em; }
-.mm-md h2 { font-size: 1.55em; border-bottom: 1px solid var(--mm-border); padding-bottom: .3em; }
-.mm-md h3 { font-size: 1.3em; }
-.mm-md h4 { font-size: 1.12em; }
-.mm-md h5 { font-size: 1em; }
-.mm-md h6 { font-size: .92em; color: var(--mm-text-weak); }
-
-.mm-md p { margin: .8em 0; }
-
-.mm-md ul,
-.mm-md ol { margin: .8em 0; padding-left: 1.6em; }
-.mm-md li { margin: .3em 0; }
-
-.mm-md blockquote {
-  margin: 1em 0;
-  padding: .4em 1em;
-  border-left: 3px solid var(--mm-accent);
-  background-color: var(--mm-surface-2);
-  color: var(--mm-text-weak);
-  border-radius: 0 var(--mm-radius) var(--mm-radius) 0;
-}
-
-.mm-md pre {
-  margin: 1.2em 0;
-  padding: 14px 16px;
-  overflow-x: auto;
-  background-color: var(--mm-surface-2);
-  border: 1px solid var(--mm-border);
-  border-radius: var(--mm-radius);
-  line-height: 1.6;
-}
-
-.mm-md code {
-  padding: .12em .36em;
-  background-color: var(--mm-surface-2);
-  border-radius: 4px;
-  font-size: .9em;
-}
-
-.mm-md pre code { padding: 0; background: transparent; }
-
-.mm-md table {
-  width: 100%;
-  margin: 1.2em 0;
-  border-collapse: collapse;
-}
-
-.mm-md th,
-.mm-md td {
-  padding: 8px 12px;
-  border: 1px solid var(--mm-border);
-  text-align: left;
-}
-
-.mm-md th { background-color: var(--mm-surface-2); font-weight: 600; }
-
-.mm-md img { max-width: 100%; border-radius: var(--mm-radius); }
-.mm-md a { color: var(--mm-accent); text-decoration: none; }
-.mm-md a:hover { text-decoration: underline; }
-.mm-md hr { border: none; border-top: 1px solid var(--mm-border); margin: 2em 0; }
 
 /* 批注锚点高亮与搜索命中高亮 */
 .mm-md mark,
@@ -211,3 +153,16 @@ body,
   border-radius: 3px;
   padding: 0 2px;
 }
+
+/* ---------------- 字号五档 ---------------- */
+/*
+ * 必须放在四组主题变量块**之后**：html[data-theme="light|dark"] 与
+ * html[data-font="…"] 特异性相同（0,1,1），只靠源码顺序决胜。
+ * 曾经写在主题块之前，深/浅色主题下被主题块里的 --mm-font-scale: 1 覆盖，
+ * 表现为「点字号没反应」。
+ */
+html[data-font="xl"] { --mm-font-scale: 1.25; }
+html[data-font="lg"] { --mm-font-scale: 1.125; }
+html[data-font="md"] { --mm-font-scale: 1; }
+html[data-font="sm"] { --mm-font-scale: 0.9375; }
+html[data-font="xs"] { --mm-font-scale: 0.875; }
