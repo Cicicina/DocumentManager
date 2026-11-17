@@ -49,7 +49,7 @@
 
 <script setup>
 /**
- * 分享列表：直接内嵌在设置页，列出当前账号创建过的分享。
+ * 分享列表：在「分享管理」独立页中使用，列出当前账号创建过的分享。
  * 展示状态与有效期，支持复制链接与提前作废（作废后立即失效，不可恢复）。
  *
  * 状态由服务端计算（active / expired / revoked），前端不重复判定时间，
@@ -190,8 +190,6 @@ async function revokeItem(item) {
 }
 
 .mm-shares__body {
-  max-height: calc(300px * var(--mm-ui-scale, 1));
-  overflow-y: auto;
   padding: 0 calc(16px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
 }
 

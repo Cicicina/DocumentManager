@@ -17,6 +17,10 @@
           <text class="mm-settings-page__label">回收站</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
+        <view class="mm-settings-page__row" @click="openShareList">
+          <text class="mm-settings-page__label">分享管理</text>
+          <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
+        </view>
         <view class="mm-settings-page__row" @click="openImageSpace">
           <text class="mm-settings-page__label">图片空间</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
@@ -51,10 +55,6 @@
         </view>
       </view>
 
-      <!-- 分享列表：直接内嵌展示，不再需要点二级入口 -->
-      <view class="mm-settings-page__section">
-        <mm-share-manager @changed="noop" />
-      </view>
     </view>
 
     <!-- 回收站 -->
@@ -218,6 +218,10 @@ async function handleUpdateConfig(patch) {
 async function handleUpdatePermission(payload) {
   const res = await setUserPermission(payload)
   if (res.code === 0) await loadUsers()
+}
+
+function openShareList() {
+  uni.navigateTo({ url: '/pages/share-list/share-list' })
 }
 
 async function openImageSpace() {

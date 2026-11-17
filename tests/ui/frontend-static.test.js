@@ -216,9 +216,9 @@ test('AC-29 pages.json 只注册业务页与 uni-id-pages，无 tabBar、无示�
 
   const paths = pages.pages.map(item => item.path)
   const business = paths.filter(item => item.startsWith('pages/'))
-  assert.deepEqual(business.sort(), ['pages/index/index', 'pages/settings/settings'],
-    '只应注册 2 个业务页')
-  assert.equal(paths.length, 18, '业务页 2 + uni-id-pages 16')
+  assert.deepEqual(business.sort(), ['pages/index/index', 'pages/settings/settings', 'pages/share-list/share-list'],
+    '只应注册 3 个业务页（分享管理为独立页）')
+  assert.equal(paths.length, 19, '业务页 3 + uni-id-pages 16')
   assert.equal(paths.filter(item => item.startsWith('uni_modules/uni-id-pages/')).length, 16,
     'uni-id-pages 登录/注册/资料页必须保留（AC-17）')
 

@@ -22,6 +22,13 @@
       }
     },
     {
+      "path": "pages/share-list/share-list",
+      "style": {
+        "navigationBarTitleText": "分享管理",
+        "enablePullDownRefresh": false
+      }
+    },
+    {
       "path": "uni_modules/uni-id-pages/pages/register/register",
       "style": {
         "navigationBarTitleText": "注册"
