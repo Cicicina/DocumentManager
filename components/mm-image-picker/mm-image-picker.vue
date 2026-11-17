@@ -58,7 +58,7 @@
  * 选中后只 emit select({fileId, name, tempUrl})，不直接改正文；插入位置由编辑器决定。
  */
 import { computed, ref, watch } from 'vue'
-import { list as listImages, getTempUrls, register as registerImage, reorder as reorderImages } from '@/common/api/mm-image.js'
+import { list as listImages, getTempUrlsBatched, getTempUrls, register as registerImage, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
 import { uploadCloudFile } from '@/common/utils/upload.js'
@@ -109,7 +109,8 @@ async function loadImages() {
     images.value = res.data.list || []
     const ids = images.value.map(item => item.file_id).filter(Boolean)
     if (ids.length > 0) {
-      const urlRes = await getTempUrls({ file_ids: ids })
+      // 云端单次最多换 50 个 URL，分批拉取，避免超出部分图片一直加载不出来
+      const urlRes = await getTempUrlsBatched(ids)
       if (urlRes.code === 0 && urlRes.data) tempUrls.value = urlRes.data
     }
   }

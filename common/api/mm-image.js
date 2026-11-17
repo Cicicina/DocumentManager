@@ -15,6 +15,38 @@ export const list = (param = {}) => call('mmImage', 'list', param)
 export const getTempUrls = (param = {}) => call('mmImage', 'getTempUrls', param)
 
 /**
+ * 分批换取临时 URL（前端适配云端批量上限）。
+ *
+ * 云端 getTempUrls 单次最多处理 50 个 fileID（TEMP_URL_BATCH），而图片空间每页
+ * 取 60 张。若一次把 60 个都传过去，云端会静默截断后 10 个 —— 表现就是
+ * 「部分上传的图片一直显示占位图、加载不出来」。这里按 50 一批拆分后合并结果。
+ *
+ * @param {string[]} fileIds 云存储 fileID 列表
+ * @returns {Promise<{code:number, data:Object<string,string>}>} 合并后的映射；任一批失败按失败处理
+ */
+export async function getTempUrlsBatched(fileIds) {
+  const ids = Array.isArray(fileIds) ? fileIds.filter(Boolean) : []
+  if (ids.length === 0) return { code: 0, data: {}, message: '' }
+
+  const BATCH = 50
+  const merged = Object.create(null)
+  let lastFailure = null
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const res = await getTempUrls({ file_ids: ids.slice(i, i + BATCH) })
+    if (res && res.code === 0 && res.data) {
+      Object.assign(merged, res.data)
+    } else {
+      lastFailure = res
+    }
+  }
+  // 已拿到部分映射就照常返回，只有全部失败才把失败码交回调用方提示
+  if (lastFailure && Object.keys(merged).length === 0) {
+    return { code: lastFailure.code, data: null, message: lastFailure.message }
+  }
+  return { code: 0, data: merged, message: '' }
+}
+
+/**
  * 在图片空间单独清理图片记录，不随文档彻底删除级联。
  * 被文档引用时返回 4011 与引用明细，确认后带 force:true 重试才会级联清引用。
  */

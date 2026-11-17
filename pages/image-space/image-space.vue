@@ -45,7 +45,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { formatSize } from '@/common/utils/format.js'
-import { list as listImages, getTempUrls, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
+import { list as listImages, getTempUrlsBatched, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { useImageDragSort } from '@/common/utils/drag-order.js'
 import { useConfirm } from '@/common/utils/confirm.js'
 
@@ -85,7 +85,8 @@ async function loadImages() {
     imageList.value = res.data.list || []
     const ids = imageList.value.map(item => item.file_id).filter(Boolean)
     if (ids.length > 0) {
-      const urlRes = await getTempUrls({ file_ids: ids })
+      // 云端单次最多换 50 个 URL，这里分批拉取，避免第 51 张起一直显示占位图
+      const urlRes = await getTempUrlsBatched(ids)
       if (urlRes.code === 0 && urlRes.data) imageUrls.value = urlRes.data
     }
   }
