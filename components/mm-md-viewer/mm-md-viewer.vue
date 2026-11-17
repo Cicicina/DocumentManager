@@ -118,14 +118,21 @@ function applyHighlights() {
     .filter(item => item && item.status === 'active' && typeof item.start_offset === 'number')
     .sort((left, right) => (right.start_offset || 0) - (left.start_offset || 0))
 
+  // 关键：从后往前高亮，但 querySelectorAll 返回的是 DOM 文档顺序（前面的 mark 排在前），
+  // 与"创建顺序"相反。绝不能用 slice(before) 按数量取"本次新增"——那样每次都会取到
+  // 文档里最后一个 mark，所有气泡全堆到同一处（多批注定位错乱的真正根因）。
+  // 改为按元素身份记录已处理的 mark，新增 = 当前所有 mark 里不在集合中的那些。
+  const processedMarks = new Set()
   for (const comment of actives) {
-    const before = el.querySelectorAll('mark.mm-anchor').length
     highlightRange(el, comment.start_offset, comment.end_offset)
     const marks = el.querySelectorAll('mark.mm-anchor')
     const created = []
-    for (let i = before; i < marks.length; i++) {
-      marks[i].setAttribute('data-comment-id', comment._id || '')
-      created.push(marks[i])
+    for (let i = 0; i < marks.length; i++) {
+      const mark = marks[i]
+      if (processedMarks.has(mark)) continue
+      processedMarks.add(mark)
+      mark.setAttribute('data-comment-id', comment._id || '')
+      created.push(mark)
     }
     // 气泡挂在锚点最后一个 mark 之后，用真实节点渲染，
     // 「查看全部」才不会像伪元素那样被 text-overflow 裁掉、也没法单独点。
