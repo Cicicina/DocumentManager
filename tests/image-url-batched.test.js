@@ -9,6 +9,18 @@ const assert = require('node:assert/strict')
 const { readText } = require('./helpers/load-esm.js')
 const { loadInjectedModule } = require('./helpers/api-runtime.js')
 
+/**
+ * 云存储临时 URL 带 referer 防盗链白名单：本机/手机局域网 IP 访问时浏览器带的
+ * referer 不在白名单 → 图片 HTTP 403（已用 curl 分别以线上域名 / 本机 IP referer
+ * 取证：200 vs 403）。H5 模板必须声明 no-referrer，让图片请求不带 referer 绕过。
+ * 这里锁定模板契约，避免模板改动把这条策略回退掉。
+ */
+test('H5 模板声明 no-referrer，规避图片临时URL的referer防盗链', () => {
+  const html = readText('index.html')
+  assert.match(html, /<meta\s+name=["']referrer["']\s+content=["']no-referrer["']\s*\/?>/i,
+    'index.html 必须包含 <meta name="referrer" content="no-referrer">')
+})
+
 async function loadApi(impl) {
   const source = readText('common/api/mm-image.js')
   const { module } = await loadInjectedModule(source, {

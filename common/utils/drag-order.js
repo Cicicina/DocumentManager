@@ -232,9 +232,19 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     Promise.resolve(onCommit(items)).catch(() => {})
   }
 
+  /** 挂触屏专属的 document 监听：部分内置浏览器只发 touch 事件（不发 pointer 事件），
+   *  补一套保证能拖动 / 松手提交。passive:false 才能 preventDefault 阻止滚动接管。 */
+  function attachTouchListeners() {
+    if (typeof document === 'undefined') return
+    document.addEventListener('touchmove', handleMove, { passive: false })
+    document.addEventListener('touchend', handleUp)
+    document.addEventListener('touchcancel', cancel)
+    if (dragEl && dragEl.addEventListener) dragEl.addEventListener('contextmenu', handleContextMenu)
+  }
+
   /**
    * 开始拖动。
-   * @param {object} event 原生 pointerdown 事件
+   * @param {object} event 原生 pointerdown / touchstart 事件（模板两个都绑）
    * @param {object} item 卡片数据
    * @param {number} index 卡片在列表中的下标
    * @returns {void}
@@ -244,6 +254,26 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     // 归一化事件：兼容原生 PointerEvent / uni 包装对象 / 只有 touchstart 的浏览器
     const pointer = normalizePointerEvent(event)
     if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return
+
+    // 真机上同一次按下 touchstart 与 pointerdown 会先后触发本函数（模板两个都绑）。
+    // 后到的那次若走完整初始化，会 clearHold() 把先到事件设好的长按定时器清掉 →
+    // 真机表现就是「长按没反应」。这里对「手势进行中的重复进入」做守卫：
+    // - 不重置原点 / 拖动下标 / 长按定时器；
+    // - 若后到事件带明确触屏信号而先到事件没有（pointerdown 丢了 pointerType），
+    //   补全触屏判定并补挂 touch 监听，保证长按仍能启动。
+    if (active) {
+      if (pointer.isTouch && !touchGesture) {
+        touchGesture = true
+        if (!armed && !holdTimer) {
+          holdTimer = setTimeout(() => {
+            holdTimer = null
+            arm()
+          }, TOUCH_HOLD_MS)
+        }
+        attachTouchListeners()
+      }
+      return
+    }
 
     active = true
     armed = false
@@ -264,14 +294,7 @@ export function useImageDragSort(getItems, setItems, onCommit) {
       document.addEventListener('pointermove', handleMove)
       document.addEventListener('pointerup', handleUp)
       document.addEventListener('pointercancel', cancel)
-      if (pointer.isTouch) {
-        // 部分内置浏览器只发 touch 事件（不发 pointer 事件），补一套监听保证能拖动/松手提交。
-        // passive:false 才能 preventDefault，否则浏览器照常滚动并中断拖动。
-        document.addEventListener('touchmove', handleMove, { passive: false })
-        document.addEventListener('touchend', handleUp)
-        document.addEventListener('touchcancel', cancel)
-        if (dragEl && dragEl.addEventListener) dragEl.addEventListener('contextmenu', handleContextMenu)
-      }
+      if (pointer.isTouch) attachTouchListeners()
     }
   }
 

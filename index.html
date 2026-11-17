@@ -2,6 +2,11 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- 云存储临时图片 URL 带 referer 防盗链白名单：线上 *.cloudstatic.cn 放行，
+         本机 IP / 手机局域网 IP 访问时浏览器带的 referer 会被拒（HTTP 403），
+         导致「本机 IP 打开页面图片全不显示」。统一不发 referer 即可绕过，
+         对线上域名无副作用（签名 URL 本身已鉴权，不依赖 referer）。 -->
+    <meta name="referrer" content="no-referrer" />
     <script>
       var coverSupport = 'CSS' in window && typeof CSS.supports === 'function' && (CSS.supports('top: env(a)') ||
         CSS.supports('top: constant(a)'))

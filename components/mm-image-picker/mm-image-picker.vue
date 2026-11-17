@@ -29,6 +29,7 @@
             :class="{ 'is-dragging': draggingId === item._id }"
             :data-drag-index="index"
             :title="imageTitle(item)"
+            @touchstart="startDrag($event, item, index)"
             @pointerdown="startDrag($event, item, index)"
             @click="pick(item)"
           >
