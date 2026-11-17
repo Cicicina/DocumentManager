@@ -75,21 +75,28 @@ function createEnv(options = {}) {
   const hasActiveSelection = { value: false }
   const annotationSelection = { value: null }
   const commentDialogVisible = { value: !!options.dialogOpen }
+  // 与生产一致：md 原文带标题标记，plainText 是提纯结果，两者坐标不同
   const store = { state: { editorContent: '# 标题\n\n这是文档原文前面的内容，后面还有正文。' } }
-  const offsetsStub = typeof options.offsets === 'function' ? options.offsets : () => options.offsets
+  const plainText = { value: '标题\n这是文档原文前面的内容，后面还有正文。' }
+  const offsetCalls = []
+  const offsetsStub = (container, text) => {
+    offsetCalls.push({ container, text })
+    return typeof options.offsets === 'function' ? options.offsets(container, text) : options.offsets
+  }
 
   const factory = new Function(
     'window', 'document', 'commentDialogVisible', 'hasActiveSelection',
-    'annotationSelection', 'store', 'setTimeout', 'clearTimeout', '__getSelectionOffsets',
+    'annotationSelection', 'store', 'plainText', 'setTimeout', 'clearTimeout', '__getSelectionOffsets',
     'let shellSelectionTimer = null\n' + `${guardSrc}\n${captureSrc}\nreturn { isBodyTextSelection, captureShellSelection }`
   )
   const page = factory(
     win, doc, commentDialogVisible, hasActiveSelection, annotationSelection,
-    store, fakeSetTimeout, fakeClearTimeout, offsetsStub
+    store, plainText, fakeSetTimeout, fakeClearTimeout, offsetsStub
   )
 
   return {
     dom, win, doc, page, hasActiveSelection, annotationSelection, commentDialogVisible,
+    plainText, store, offsetCalls,
     nodes: {
       body: doc.querySelector('.mm-viewer__body'),
       bodyText: doc.querySelector('#bodyText').firstChild,
@@ -209,4 +216,63 @@ test('批注输入弹层打开期间：选区变化不覆盖锚点，按钮保�
   assert.equal(env.hasActiveSelection.value, false)
   assert.deepEqual(env.annotationSelection.value, OLD_ANCHOR)
   assert.equal(env.hasPendingTimer(), false)
+})
+
+test('坐标换算必须用提纯纯文本，而不是 Markdown 原文', async () => {
+  const env = createEnv({ offsets: NEW_ANCHOR })
+  const { bodyText } = env.nodes
+  env.select({ start: bodyText, end: bodyText, common: bodyText })
+
+  env.page.captureShellSelection()
+  await env.flush()
+  assert.equal(env.offsetCalls.length, 1)
+  assert.equal(env.offsetCalls[0].text, env.plainText.value, '第二参数必须是 plainText')
+  assert.notEqual(env.plainText.value, env.store.state.editorContent, '两者坐标系确实不同')
+})
+
+test('弹层在防抖到期前打开：迟到的换算不得清空弹层要用的锚点', async () => {
+  const env = createEnv({ offsets: NEW_ANCHOR })
+  env.annotationSelection.value = OLD_ANCHOR
+  const { bodyText } = env.nodes
+  env.select({ start: bodyText, end: bodyText, common: bodyText })
+
+  env.page.captureShellSelection()
+  assert.equal(env.hasPendingTimer(), true)
+  env.commentDialogVisible.value = true // 模拟 openShellComment 打开弹层
+  await env.flush()
+  assert.deepEqual(env.annotationSelection.value, OLD_ANCHOR, '选区折叠后的 null 不能覆盖锚点')
+})
+
+/** 从生产源码抽出提交校验函数，注入 plainText 后真实执行 */
+function createAnchorValidator(plainText) {
+  const source = readText('pages/index/index.vue')
+  const script = /<script setup>([\s\S]*?)<\/script>/.exec(source)[1]
+  const validatorSrc = extractFunction(script, 'isAnchorStillValid')
+  const factory = new Function('plainText', `${validatorSrc}\nreturn isAnchorStillValid`)
+  return factory({ value: plainText })
+}
+
+test('提交复核：同一坐标系的锚点通过；用 md 原文坐标切片则失败（原根因）', () => {
+  const plain = '标题\n这是文档原文前面的内容，后面还有正文。'
+  const md = '# 标题\n\n这是文档原文前面的内容，后面还有正文。'
+  const selected = '文档原文'
+  const start = plain.indexOf(selected)
+  const validate = createAnchorValidator(plain)
+
+  const good = {
+    start,
+    end: start + selected.length,
+    selectedText: plain.slice(start, start + selected.length),
+    prefix: plain.slice(0, start),
+    suffix: plain.slice(start + selected.length, start + selected.length + 4)
+  }
+  assert.equal(validate(good), true, '按 plainText 生成的锚点提交必须放行')
+
+  const bad = {
+    ...good,
+    selectedText: md.slice(start, start + selected.length),
+    prefix: md.slice(0, start),
+    suffix: md.slice(start + selected.length, start + selected.length + 4)
+  }
+  assert.equal(validate(bad), false, '用 md 原文切片会错位，正是「位置已经变化」的根因')
 })

@@ -2079,8 +2079,14 @@ function captureShellSelection() {
   if (shellSelectionTimer) clearTimeout(shellSelectionTimer)
   shellSelectionTimer = setTimeout(async () => {
     shellSelectionTimer = null
+    // 弹层已打开就冻结锚点：点「添加批注」的瞬间浏览器会折叠选区，
+    // 此刻再换算只会得到 null，把刚缓存、弹层正要用的锚点清掉。
+    if (commentDialogVisible.value) return
     const { getSelectionOffsets } = await import('@/common/utils/selection.js')
-    const offsets = getSelectionOffsets(container, store.state.editorContent || '')
+    // 必须用提纯纯文本：getSelectionOffsets 产出的 start/end/selectedText/前后缀
+    // 全部按 plainText 切片，提交时 isAnchorStillValid 也按 plainText 复核。
+    // 传 md 原文会让两个坐标系错位，点确定必然报「批注位置已经变化」。
+    const offsets = getSelectionOffsets(container, plainText.value || '')
     if (offsets) {
       annotationSelection.value = offsets
     } else {
@@ -2095,6 +2101,11 @@ function openShellComment() {
   if (!annotationSelection.value) {
     toast.show('请先在正文中选中文字')
     return
+  }
+  // 取消尚未执行的换算，避免它在弹层打开后把锚点清掉
+  if (shellSelectionTimer) {
+    clearTimeout(shellSelectionTimer)
+    shellSelectionTimer = null
   }
   commentDialogText.value = ''
   commentDialogVisible.value = true
@@ -2120,8 +2131,14 @@ function isAnchorStillValid(offsets) {
 
 async function submitShellComment() {
   const text = String(commentDialogText.value || '').trim()
+  if (!text) return
   const offsets = annotationSelection.value
-  if (!text || !offsets) return
+  if (!offsets) {
+    // 锚点在输入期间失效时给出明确反馈，不能静默 return 让用户白点确定
+    toast.show('批注位置已失效，请重新选中文字')
+    commentDialogVisible.value = false
+    return
+  }
   if (!isAnchorStillValid(offsets)) {
     // 位置变化：不提交，清掉失效锚点让用户重选，避免写进一条指向错误位置的批注
     toast.show('批注位置已经变化，请重新选择')
