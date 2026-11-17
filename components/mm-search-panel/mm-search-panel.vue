@@ -217,8 +217,8 @@ defineExpose({ focus })
 .mm-search__head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
@@ -231,23 +231,23 @@ defineExpose({ focus })
 
 .mm-search__close {
   flex: none;
-  padding: 4px;
+  padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
 .mm-search__scopes {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
   overflow-x: auto;
 }
 
 .mm-search__scope {
   flex: none;
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: calc(4px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   border: 1px solid var(--mm-border);
   border-radius: 12px;
@@ -269,24 +269,24 @@ defineExpose({ focus })
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 16px;
-  font-size: 13px;
+  padding: calc(40px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-search__group {
-  padding: 8px 0;
+  padding: calc(8px * var(--mm-ui-scale, 1)) 0;
 }
 
 .mm-search__group-title {
   display: block;
-  padding: 4px 16px;
-  font-size: 12px;
+  padding: calc(4px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-search__item {
-  padding: 10px 16px;
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
@@ -296,14 +296,14 @@ defineExpose({ focus })
 
 .mm-search__item-name {
   display: block;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
 }
 
 .mm-search__item-text {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   overflow: hidden;
   white-space: nowrap;
@@ -313,7 +313,7 @@ defineExpose({ focus })
 .mm-search__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
   margin-top: 4px;
 }
 </style>

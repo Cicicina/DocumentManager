@@ -21,10 +21,13 @@
         </view>
         <view v-else class="mm-image-picker__grid">
           <view
-            v-for="item in images"
+            v-for="(item, index) in images"
             :key="item._id"
             class="mm-image-picker__item"
+            :class="{ 'is-dragging': draggingId === item._id }"
+            :data-drag-index="index"
             :title="imageTitle(item)"
+            @pointerdown="startDrag($event, item, index)"
             @click="pick(item)"
           >
             <image
@@ -53,11 +56,12 @@
  * 选中后只 emit select({fileId, name, tempUrl})，不直接改正文；插入位置由编辑器决定。
  */
 import { computed, ref, watch } from 'vue'
-import { list as listImages, getTempUrls, register as registerImage } from '@/common/api/mm-image.js'
+import { list as listImages, getTempUrls, register as registerImage, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
 import { uploadCloudFile } from '@/common/utils/upload.js'
 import { formatSize } from '@/common/utils/format.js'
+import { useImageDragSort } from '@/common/utils/drag-order.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -69,6 +73,23 @@ const emit = defineEmits(['update:visible', 'select'])
 const images = ref([])
 const tempUrls = ref({})
 const loading = ref(false)
+
+/** 拖动排序：order 越大越靠前，与图片空间共用同一套规则 */
+const { draggingId, startDrag } = useImageDragSort(
+  () => images.value,
+  next => { images.value = next },
+  async (items) => {
+    if (items.length === 0) return
+    const total = items.length
+    const payload = items.map((item, index) => ({ image_id: item._id, order: total - index }))
+    const res = await reorderImages({ items: payload })
+    if (res.code === 0) {
+      images.value = items.map((item, index) => ({ ...item, order: total - index }))
+    } else {
+      await loadImages()
+    }
+  }
+)
 
 const modelVisible = computed({
   get: () => props.visible,
@@ -167,23 +188,23 @@ function close() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: calc(14px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-image-picker__title {
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
 
 .mm-image-picker__close {
-  padding: 4px;
+  padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
 .mm-image-picker__toolbar {
-  padding: 10px 16px;
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
@@ -196,30 +217,36 @@ function close() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 16px;
-  font-size: 13px;
+  padding: calc(48px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-image-picker__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
-  padding: 12px 16px 24px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(24px * var(--mm-ui-scale, 1));
 }
 
 .mm-image-picker__item {
   position: relative;
-  height: 96px;
+  height: calc(96px * var(--mm-ui-scale, 1));
   border: 1px solid var(--mm-border);
   border-radius: 8px;
   overflow: hidden;
   background-color: var(--mm-surface-2);
-  cursor: pointer;
+  cursor: grab;
 }
 
 .mm-image-picker__item:hover {
   border-color: var(--mm-accent);
+}
+
+.mm-image-picker__item.is-dragging {
+  opacity: 0.45;
+  border-color: var(--mm-accent);
+  cursor: grabbing;
 }
 
 .mm-image-picker__img {
@@ -240,9 +267,9 @@ function close() {
   top: 4px;
   right: 4px;
   min-width: 16px;
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 14px;
+  padding: 0 calc(4px * var(--mm-ui-scale, 1));
+  font-size: calc(10px * var(--mm-ui-scale, 1));
+  line-height: calc(14px * var(--mm-ui-scale, 1));
   text-align: center;
   color: var(--mm-bg);
   background-color: var(--mm-accent);
@@ -255,9 +282,9 @@ function close() {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 1px 4px;
-  font-size: 10px;
-  line-height: 13px;
+  padding: calc(1px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
+  font-size: calc(10px * var(--mm-ui-scale, 1));
+  line-height: calc(13px * var(--mm-ui-scale, 1));
   text-align: center;
   color: var(--mm-text);
   background-color: var(--mm-surface);

@@ -137,12 +137,12 @@ function confirm() {
 
 <style scoped>
 .mm-icon-picker {
-  padding: 16px 16px 20px;
+  padding: calc(16px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(20px * var(--mm-ui-scale, 1));
 }
 
 .mm-icon-picker__title {
   margin-bottom: 12px;
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -150,14 +150,14 @@ function confirm() {
 .mm-icon-picker__grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
 }
 
 .mm-icon-picker__item {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
+  height: calc(44px * var(--mm-ui-scale, 1));
   border: 1px solid var(--mm-border);
   border-radius: 8px;
   background-color: var(--mm-surface);
@@ -171,19 +171,19 @@ function confirm() {
 
 .mm-icon-picker__img {
   width: 22px;
-  height: 22px;
+  height: calc(22px * var(--mm-ui-scale, 1));
 }
 
 .mm-icon-picker__custom {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: calc(12px * var(--mm-ui-scale, 1));
   margin-top: 14px;
 }
 
 .mm-icon-picker__preview {
   width: 32px;
-  height: 32px;
+  height: calc(32px * var(--mm-ui-scale, 1));
   border: 1px solid var(--mm-border);
   border-radius: 6px;
 }
@@ -191,7 +191,7 @@ function confirm() {
 .mm-icon-picker__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   margin-top: 18px;
 }
 </style>

@@ -174,8 +174,25 @@ function toConfigView(config) {
     account_enabled: config.account_enabled !== false,
     permission_enabled: config.permission_enabled === true,
     admin_user_id: config.admin_user_id || '',
+    // 目录树根节点的显示名称与图标（根节点不是真实文件夹记录，因此存系统配置）
+    root_name: typeof config.root_name === 'string' ? config.root_name : '',
+    root_icon: normalizeIcon(config.root_icon),
     anonymous: config.account_enabled === false
   }
+}
+
+/**
+ * 归一化根节点图标：只接受 {type:'preset'|'custom', value:string}，其余一律 null。
+ * 与 mm-file 的 normalizeIcon 保持同一形状，前端可直接复用同一套渲染逻辑。
+ * @param {object|null} icon
+ * @returns {{type:string,value:string}|null}
+ */
+function normalizeIcon(icon) {
+  if (!icon || typeof icon !== 'object') return null
+  const type = icon.type === 'preset' || icon.type === 'custom' ? icon.type : ''
+  const value = typeof icon.value === 'string' ? icon.value.trim() : ''
+  if (!type || !value) return null
+  return { type, value }
 }
 
 // ----------------------------------------------------------------------------
@@ -305,6 +322,56 @@ module.exports = {
       // 权限由关→开：确立注册时间最早的用户为管理员
       if (current.permission_enabled === false && nextPermission === true) {
         await ensureAdminInternal(updatedBy)
+      }
+
+      const config = await mm.readConfig()
+      return toConfigView(config)
+    })
+  },
+
+  /**
+   * 更新目录树根节点的显示名称 / 图标。
+   * 根节点不是 mm-files 里的真实记录（parent_id 为空只会被当作「根目录」），
+   * 所以它的名称与图标存在系统配置里，多端一致。
+   * @param {{name?:string, icon?:object|null}} param
+   * @returns {Promise<object>} 最新配置视图
+   */
+  async updateRoot(param) {
+    return run(this, async (ctx) => {
+      mm.AuthGuard.assertAdmin(ctx)
+
+      const source = param || {}
+      const hasName = typeof source.name === 'string'
+      const hasIcon = Object.prototype.hasOwnProperty.call(source, 'icon')
+      if (!hasName && !hasIcon) {
+        throw bizError(ERR.PARAM_INVALID, '请提供要修改的根节点信息')
+      }
+
+      const patch = {}
+      if (hasName) {
+        const name = source.name.trim()
+        if (name.length > 60) throw bizError(ERR.PARAM_INVALID, '名称过长')
+        patch.root_name = name
+      }
+      if (hasIcon) {
+        // null / 非法结构都表示「清空，回退默认图标」
+        patch.root_icon = normalizeIcon(source.icon)
+      }
+      patch.updated_by = ctx.anonymous ? ANONYMOUS_USER_ID : ctx.uid
+      patch.updated_at = mm.now()
+
+      const existing = await findConfigDoc()
+      if (existing) {
+        await mm.collection(TABLE.SETTINGS).doc(existing._id).update(patch)
+      } else {
+        await mm.collection(TABLE.SETTINGS).add(Object.assign({
+          key: SETTINGS_KEY,
+          account_enabled: true,
+          permission_enabled: false,
+          admin_user_id: '',
+          root_name: '',
+          root_icon: null
+        }, patch))
       }
 
       const config = await mm.readConfig()

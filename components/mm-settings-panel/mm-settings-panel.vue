@@ -101,7 +101,7 @@ function onPermissionChange(user, field, value) {
 
 <style scoped>
 .mm-settings {
-  padding: 4px 0 24px;
+  padding: calc(4px * var(--mm-ui-scale, 1)) 0 calc(24px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings__section {
@@ -113,17 +113,17 @@ function onPermissionChange(user, field, value) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px 6px;
+  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings__section-title {
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
 
 .mm-settings__refresh {
-  padding: 4px;
+  padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
@@ -131,23 +131,23 @@ function onPermissionChange(user, field, value) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
-  padding: 8px 16px;
+  min-height: calc(46px * var(--mm-ui-scale, 1));
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings__label {
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
 }
 
 .mm-settings__control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: calc(8px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings__hint {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
@@ -155,20 +155,20 @@ function onPermissionChange(user, field, value) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: calc(12px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-top: 1px solid var(--mm-border);
 }
 
 .mm-settings__user-main {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
   min-width: 0;
 }
 
 .mm-settings__user-name {
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   overflow: hidden;
   white-space: nowrap;
@@ -177,8 +177,8 @@ function onPermissionChange(user, field, value) {
 
 .mm-settings__badge {
   flex: none;
-  padding: 1px 6px;
-  font-size: 11px;
+  padding: calc(1px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
+  font-size: calc(11px * var(--mm-ui-scale, 1));
   color: var(--mm-accent);
   background-color: var(--mm-accent-weak);
   border-radius: 4px;
@@ -187,12 +187,12 @@ function onPermissionChange(user, field, value) {
 .mm-settings__perm {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
   flex: none;
 }
 
 .mm-settings__perm-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
@@ -200,8 +200,8 @@ function onPermissionChange(user, field, value) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px 16px;
-  font-size: 13px;
+  padding: calc(20px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 </style>

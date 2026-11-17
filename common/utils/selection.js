@@ -169,9 +169,25 @@ function localFromPlain(nodeMap, plainOffset, edge) {
   return -1
 }
 
-/** 收集容器内全部文本节点（按文档顺序） */
+/**
+ * 收集容器内全部文本节点（按文档顺序）。
+ * 跳过带 data-mm-ignore 祖先的节点：批注气泡等纯 UI 文本不属于正文，
+ * 若无条件收集会与 plainText 错位匹配，把后面所有 offset 顶偏。
+ */
 function collectTextNodes(containerEl) {
-  const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, null, false)
+  const walker = document.createTreeWalker(containerEl, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let ancestor = node.parentElement
+      for (let depth = 0; depth < 6 && ancestor; depth++) {
+        if (ancestor.hasAttribute && ancestor.hasAttribute('data-mm-ignore')) {
+          return NodeFilter.FILTER_REJECT
+        }
+        if (ancestor === containerEl) break
+        ancestor = ancestor.parentElement
+      }
+      return NodeFilter.FILTER_ACCEPT
+    }
+  }, false)
   const nodes = []
   let node = walker.nextNode()
   while (node) {

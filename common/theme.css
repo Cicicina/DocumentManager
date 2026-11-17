@@ -166,3 +166,29 @@ html[data-font="lg"] { --mm-font-scale: 1.125; }
 html[data-font="md"] { --mm-font-scale: 1; }
 html[data-font="sm"] { --mm-font-scale: 0.9375; }
 html[data-font="xs"] { --mm-font-scale: 0.875; }
+
+/* ---------------- 手机端 UI 尺寸放大 ---------------- */
+/*
+ * 与 --mm-font-scale 分离：字号档位只影响正文，这里放大的是按钮、导航栏、
+ * 图标、列表行高等「可点区域」。手机端初始尺寸按桌面 px 直接落地会偏小，
+ * 统一乘一个系数即可，不需要逐个媒体查询改值。
+ * 用 html 而非 :root 声明，避免干扰主题变量四组键集合的静态校验。
+ */
+html {
+  --mm-ui-scale: 1;
+}
+
+@media (max-width: 767px) {
+  html {
+    --mm-ui-scale: 1.16;
+    /* wot-design-uni 的按钮/输入框尺寸写死在 px 上，用它的 CSS 变量跟着放大 */
+    --wot-button-small-height: calc(28px * var(--mm-ui-scale, 1));
+    --wot-button-small-padding: 0 calc(12px * var(--mm-ui-scale, 1));
+    --wot-button-small-fs: calc(13px * var(--mm-ui-scale, 1));
+    --wot-button-medium-height: calc(36px * var(--mm-ui-scale, 1));
+    --wot-button-medium-padding: 0 calc(16px * var(--mm-ui-scale, 1));
+    --wot-button-medium-fs: calc(14px * var(--mm-ui-scale, 1));
+    --wot-input-fs: calc(14px * var(--mm-ui-scale, 1));
+  }
+}
+

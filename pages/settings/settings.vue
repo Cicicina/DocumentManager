@@ -69,10 +69,13 @@
           <view v-else-if="imageList.length === 0" class="mm-image-space__status"><text>还没有图片</text></view>
           <view v-else class="mm-image-space__grid">
             <view
-              v-for="item in imageList"
+              v-for="(item, index) in imageList"
               :key="item._id"
               class="mm-image-space__item"
+              :class="{ 'is-dragging': draggingId === item._id }"
+              :data-drag-index="index"
               :title="imageTitle(item)"
+              @pointerdown="startDrag($event, item, index)"
             >
               <image
                 v-if="imageUrls[item.file_id]"
@@ -84,7 +87,7 @@
                 <uni-icons type="image" size="18" color="var(--mm-text-weak)" />
               </view>
               <text v-if="item.ref_count > 0" class="mm-image-space__refs">{{ item.ref_count }} 引用</text>
-              <view class="mm-image-space__remove" @click="removeImage(item)">
+              <view class="mm-image-space__remove" @pointerdown.stop="noop" @click="removeImage(item)">
                 <uni-icons type="trash" size="12" color="var(--mm-text)" />
               </view>
               <!-- 大小 + 上传者：尺寸/来源一眼可见，不必依赖悬浮 title -->
@@ -115,7 +118,8 @@ import { setStoredTheme } from '@/common/utils/theme.js'
 import { FONT_OPTIONS, getStoredFont, setStoredFont } from '@/common/utils/font.js'
 import { formatSize } from '@/common/utils/format.js'
 import { getConfig, updateConfig, listUsers, setUserPermission } from '@/common/api/mm-settings.js'
-import { list as listImages, getTempUrls, remove as removeImages, removeSilent } from '@/common/api/mm-image.js'
+import { list as listImages, getTempUrls, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
+import { useImageDragSort } from '@/common/utils/drag-order.js'
 
 const store = useAppStore()
 
@@ -126,6 +130,27 @@ const imageSpaceVisible = ref(false)
 const imageList = ref([])
 const imageUrls = ref({})
 const imageLoading = ref(false)
+
+/**
+ * 拖动排序：order 越大越靠前，所以松手后按「数组长度 - 下标」重新编号，
+ * 既保持当前可见顺序，又能让新上传的图（服务端取 max+1）继续排在最前。
+ */
+const { draggingId, startDrag } = useImageDragSort(
+  () => imageList.value,
+  next => { imageList.value = next },
+  async (items) => {
+    if (items.length === 0) return
+    const total = items.length
+    const payload = items.map((item, index) => ({ image_id: item._id, order: total - index }))
+    const res = await reorderImages({ items: payload })
+    if (res.code === 0) {
+      imageList.value = items.map((item, index) => ({ ...item, order: total - index }))
+      uni.showToast({ title: '顺序已保存', icon: 'none' })
+    } else {
+      await loadImages()
+    }
+  }
+)
 
 /** 本地交互偏好：允许读取剪贴板并询问是否追加到当前文档（默认开启） */
 const clipboardAppendEnabled = ref(uni.getStorageSync('mm_clipboard_append_enabled') !== false)
@@ -277,7 +302,7 @@ function noop() {
 .mm-settings-page__inner {
   max-width: 720px;
   margin: 0 auto;
-  padding: 8px 0 32px;
+  padding: calc(8px * var(--mm-ui-scale, 1)) 0 calc(32px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings-page__section {
@@ -289,8 +314,8 @@ function noop() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 48px;
-  padding: 8px 16px;
+  min-height: calc(48px * var(--mm-ui-scale, 1));
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
   cursor: pointer;
 }
@@ -303,12 +328,12 @@ function noop() {
 .mm-settings-page__themes {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
 }
 
 .mm-settings-page__theme {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: calc(3px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   border: 1px solid var(--mm-border);
   border-radius: 10px;
@@ -333,18 +358,18 @@ function noop() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: calc(14px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-image-space__title {
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
 
 .mm-image-space__close {
-  padding: 4px;
+  padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
@@ -357,25 +382,32 @@ function noop() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 16px;
-  font-size: 13px;
+  padding: calc(48px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-image-space__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 10px;
-  padding: 12px 16px 24px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(24px * var(--mm-ui-scale, 1));
 }
 
 .mm-image-space__item {
   position: relative;
-  height: 96px;
+  height: calc(96px * var(--mm-ui-scale, 1));
   border: 1px solid var(--mm-border);
   border-radius: 8px;
   overflow: hidden;
   background-color: var(--mm-surface-2);
+  cursor: grab;
+}
+
+.mm-image-space__item.is-dragging {
+  opacity: 0.45;
+  border-color: var(--mm-accent);
+  cursor: grabbing;
 }
 
 /* 引用次数角标：放左上角，避开右上角的删除按钮 */
@@ -383,9 +415,9 @@ function noop() {
   position: absolute;
   top: 4px;
   left: 4px;
-  padding: 1px 6px;
-  font-size: 10px;
-  line-height: 14px;
+  padding: calc(1px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
+  font-size: calc(10px * var(--mm-ui-scale, 1));
+  line-height: calc(14px * var(--mm-ui-scale, 1));
   color: var(--mm-bg);
   background-color: var(--mm-accent);
   border-radius: 7px;
@@ -397,9 +429,9 @@ function noop() {
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 2px 6px;
-  font-size: 10px;
-  line-height: 14px;
+  padding: calc(2px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
+  font-size: calc(10px * var(--mm-ui-scale, 1));
+  line-height: calc(14px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   background-color: var(--mm-surface);
   opacity: .9;
@@ -426,7 +458,7 @@ function noop() {
   align-items: center;
   justify-content: center;
   width: 22px;
-  height: 22px;
+  height: calc(22px * var(--mm-ui-scale, 1));
   border-radius: 11px;
   background-color: var(--mm-surface);
   border: 1px solid var(--mm-border);

@@ -1,24 +1,24 @@
 <template>
   <view class="mm-tree">
-    <!-- 根节点：全部文档（parent_id = ''） -->
+    <!-- 根节点：全部文档（parent_id = ''）。根节点不是真实文件夹记录，
+         名称与图标来自系统配置，因此单独走 rename-root / change-icon-root 事件。 -->
     <view
-      class="mm-tree__row"
+      class="mm-tree__row mm-tree__row--root"
       :class="{ 'is-active': currentId === '' }"
       @click="handleSelect(null)"
     >
       <view class="mm-tree__arrow is-placeholder" />
-      <uni-icons class="mm-tree__icon" type="home" size="15" color="var(--mm-text-weak)" />
-      <text class="mm-tree__name">全部文档</text>
-    </view>
-
-    <!-- 常驻新建入口：目录非空时也要有地方建，且默认建在当前选中的目录下 -->
-    <view
-      class="mm-tree__row mm-tree__row--create"
-      @click="emitCreate(currentId)"
-    >
-      <view class="mm-tree__arrow is-placeholder" />
-      <uni-icons class="mm-tree__icon" type="plus" size="14" color="var(--mm-text-weak)" />
-      <text class="mm-tree__name">新建文件夹</text>
+      <image
+        v-if="rootIconSrc"
+        class="mm-tree__folder-img"
+        :src="rootIconSrc"
+        mode="aspectFit"
+      />
+      <uni-icons v-else class="mm-tree__icon" type="home" size="15" color="var(--mm-text-weak)" />
+      <text class="mm-tree__name">{{ rootName || '全部文档' }}</text>
+      <view class="mm-tree__more" @click.stop="openRootMenu">
+        <uni-icons type="more-filled" size="15" color="var(--mm-text-weak)" />
+      </view>
     </view>
 
     <!-- 扁平渲染 + 层级缩进，支持不限层嵌套 -->
@@ -27,7 +27,7 @@
       :key="node._id"
       class="mm-tree__row"
       :class="{ 'is-active': currentId === node._id }"
-      :style="{ paddingLeft: (node.depth * 14 + 6) + 'px' }"
+      :style="{ paddingLeft: 'calc(' + (node.depth * 14 + 6) + 'px * var(--mm-ui-scale, 1))' }"
       @click="handleSelect(node)"
     >
       <view class="mm-tree__arrow" @click.stop="toggle(node._id)">
@@ -63,16 +63,32 @@
 /**
  * 嵌套目录树：props 接收扁平 folder 节点（含 icon），内部按 parent_id 组树并扁平渲染。
  * 自定义图标的临时 URL 由父级回填到 icon.url（组件自身不发请求）。
+ *
+ * 根节点（全部文档）不是 mm-files 里的真实记录，所以它的名称与图标走
+ * rootName / rootIcon 两个 prop，修改时分别 emit rename-root / change-icon-root。
  */
 import { computed, ref } from 'vue'
 
 const props = defineProps({
   folders: { type: Array, default: () => [] },
   currentId: { type: String, default: '' },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  /** 根节点显示名称；空串回退「全部文档」 */
+  rootName: { type: String, default: '' },
+  /** 根节点图标 {type,value,url?}；null 回退默认 home 图标 */
+  rootIcon: { type: Object, default: null }
 })
 
-const emit = defineEmits(['select', 'create', 'rename', 'move', 'remove', 'change-icon'])
+const emit = defineEmits([
+  'select',
+  'create',
+  'rename',
+  'move',
+  'remove',
+  'change-icon',
+  'rename-root',
+  'change-icon-root'
+])
 
 /** 展开状态：{ [folderId]: true } */
 const expanded = ref({})
@@ -106,6 +122,9 @@ const visibleNodes = computed(() => {
   return result
 })
 
+/** 根节点图标地址：与普通节点同一套 preset / custom 规则 */
+const rootIconSrc = computed(() => iconSrc({ icon: props.rootIcon }))
+
 function hasChildren(folderId) {
   return (childrenMap.value[folderId] || []).length > 0
 }
@@ -133,6 +152,18 @@ function handleSelect(node) {
 
 function emitCreate(parentId) {
   emit('create', { parent_id: parentId || '' })
+}
+
+/** 根节点菜单：只有建子文件夹 / 重命名 / 更换图标（根节点不能被移动或删除） */
+function openRootMenu() {
+  uni.showActionSheet({
+    itemList: ['新建子文件夹', '重命名', '更换图标'],
+    success: (res) => {
+      if (res.tapIndex === 0) emit('create', { parent_id: '' })
+      else if (res.tapIndex === 1) emit('rename-root')
+      else if (res.tapIndex === 2) emit('change-icon-root')
+    }
+  })
 }
 
 function openMenu(node) {
@@ -165,14 +196,14 @@ defineExpose({ expandAll, collapseAll })
 
 <style scoped>
 .mm-tree {
-  padding: 4px 0;
+  padding: calc(4px * var(--mm-ui-scale, 1)) 0;
 }
 
 .mm-tree__row {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 34px;
+  height: calc(34px * var(--mm-ui-scale, 1));
   padding-right: 6px;
   color: var(--mm-text);
   cursor: pointer;
@@ -187,9 +218,8 @@ defineExpose({ expandAll, collapseAll })
   color: var(--mm-accent);
 }
 
-.mm-tree__row--create {
+.mm-tree__row--root {
   padding-left: 6px;
-  color: var(--mm-text-weak);
 }
 
 .mm-tree__arrow {
@@ -206,19 +236,21 @@ defineExpose({ expandAll, collapseAll })
 }
 
 .mm-tree__folder-img {
-  width: 15px;
-  height: 15px;
+  width: calc(15px * var(--mm-ui-scale, 1));
+  height: calc(15px * var(--mm-ui-scale, 1));
   flex: none;
 }
 
 .mm-tree__icon {
   flex: none;
+  transform: scale(var(--mm-ui-scale, 1));
+  transform-origin: left center;
 }
 
 .mm-tree__name {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   line-height: 20px;
   overflow: hidden;
   white-space: nowrap;
@@ -242,7 +274,7 @@ defineExpose({ expandAll, collapseAll })
   align-items: center;
   gap: 4px;
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
 }

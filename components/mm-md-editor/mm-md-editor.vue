@@ -156,32 +156,71 @@ async function handleUploadImg(files, callBack) {
 }
 
 /**
- * 在文档末尾插入图片（存储态），由主壳在 mm-image-picker 选择后调用。
- * 说明：md-editor-v3@4.21.3 未暴露稳定的光标 API，这里退化为追加到末尾；
- * 若后续版本暴露 CodeMirror 实例，可改为按光标插入。
+ * 在编辑器当前光标处插入图片（存储态）。
+ *
+ * 为什么不只用 MdEditor 的 insert()：本项目把「存储态 → 显示态」的转换放在
+ * displayValue 的 getter 里，props.imageUrlMap 的更新要等下一轮渲染才到子组件，
+ * 插入瞬间 mergedUrlMap 里还拿不到新图临时 URL，displayUrl 为空就只能退化追加到末尾。
+ * 这里直接拿 CodeMirror 实例按光标 dispatch，位置准确，也不再依赖 props 的时序。
+ *
  * @param {string} fileId 云存储 fileID
  * @param {string} name 图片名称（作为 alt）
+ * @param {string} [tempUrl] 该图的显示态临时 URL（由调用方随选择结果一并传入）
+ * @returns {void}
  */
-function insertImage(fileId, name) {
+function insertImage(fileId, name, tempUrl) {
   if (!fileId) return
   const alt = name || '图片'
-  const displayUrl = mergedUrlMap.value[fileId]
+  const displayUrl = tempUrl || mergedUrlMap.value[fileId] || ''
   const instance = editorInstance.value
 
-  // 优先插到光标处。MdEditor 4.x 的 insert 直接操作编辑器显示态内容，
-  // 因此必须传临时 URL；插入后 update:modelValue 会经 toStorageState
-  // 反替换回 mm-image://<fileID>，库中仍只存 fileID。
+  // ① 首选：CodeMirror 当前选区 / 光标处插入
+  if (displayUrl && instance && typeof instance.getEditorView === 'function') {
+    const view = instance.getEditorView()
+    if (view && view.state && typeof view.dispatch === 'function') {
+      const snippet = `![${alt}](${displayUrl})`
+      const selection = view.state.selection && view.state.selection.main
+      const from = selection ? selection.from : view.state.doc.length
+      const to = selection ? selection.to : from
+      view.dispatch({
+        changes: { from, to, insert: snippet },
+        selection: { anchor: from + snippet.length }
+      })
+      if (typeof view.focus === 'function') view.focus()
+      return
+    }
+  }
+
+  // ② 次选：编辑器 insert() 同样按光标插入（拿不到 EditorView 时的降级）
   if (instance && typeof instance.insert === 'function' && displayUrl) {
     instance.insert(() => ({ targetValue: `![${alt}](${displayUrl})` }))
     return
   }
 
-  // 兜底：编辑器未就绪或拿不到临时 URL 时追加存储态到末尾，
+  // ③ 兜底：编辑器未就绪或拿不到临时 URL 时追加存储态到末尾，
   // 由 displayValue 的 getter 在渲染时正向替换为显示态。
   const token = `![${alt}](mm-image://${fileId})`
   const current = typeof props.modelValue === 'string' ? props.modelValue : ''
   const next = current ? `${current}\n${token}\n` : `${token}\n`
   emit('update:modelValue', next)
+}
+
+/**
+ * 滚动到 markdown 第 line 行（0 基），供大纲跳转使用。
+ * CodeMirror 的 focus({cursorPos}) 会把光标放到目标位置并滚入可视区。
+ * 行号→字符偏移必须基于**显示态**文本换算，否则含图片的文档会整体偏移。
+ * @param {number} line 目标行号（0 基）
+ * @returns {void}
+ */
+function scrollToLine(line) {
+  const instance = editorInstance.value
+  if (!instance || typeof instance.focus !== 'function') return
+  const text = toDisplayState(props.modelValue)
+  const lines = text.split('\n')
+  const target = Math.max(0, Math.min(lines.length - 1, Number(line) || 0))
+  let offset = 0
+  for (let i = 0; i < target; i++) offset += lines[i].length + 1
+  instance.focus({ cursorPos: offset })
 }
 
 /**
@@ -199,7 +238,7 @@ function togglePreview(visible) {
   }
 }
 
-defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview })
+defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview, scrollToLine })
 </script>
 
 <style scoped>
@@ -228,5 +267,30 @@ defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview })
   border: none;
   background-color: var(--mm-surface);
   color: var(--mm-text);
+}
+
+/*
+ * 工具栏改为「自动换行」而不是横向滑动：
+ * 原生 .md-editor-toolbar-wrapper 是 overflow-x:auto + 单行 flex，
+ * 窄屏上右侧按钮藏在滚动区里，用户不知道可以横滑。
+ * 放开溢出并允许左右两组内部换行后，放不下就自动折到第二行。
+ */
+.mm-editor .md-editor-toolbar-wrapper {
+  overflow-x: visible;
+  overflow-y: visible;
+  scrollbar-width: auto;
+}
+
+.mm-editor .md-editor-toolbar {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.mm-editor .md-editor-toolbar-left,
+.mm-editor .md-editor-toolbar-right {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 2px;
 }
 </style>

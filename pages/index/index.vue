@@ -29,7 +29,7 @@
           <uni-icons type="person-filled" size="17" color="var(--mm-text)" />
         </view>
         <view
-          v-else-if="store.state.config.account_enabled !== false"
+          v-else-if="accountEnabled"
           class="mm-topbar__icon-btn"
           title="登录"
           aria-label="登录"
@@ -59,6 +59,31 @@
           :disabled="!store.state.currentFile || saveStatus === 'saving'"
           @click="handleSave"
         >保存</wd-button>
+      </view>
+    </view>
+
+    <!--
+      回到顶部 / 回到底部：按滚动位置互斥显示，不与底部保存、添加批注浮钮重叠
+      （两个浮钮在 bottom:24px，这里上移到 76px 起竖排）。
+    -->
+    <view v-if="store.state.currentFile" class="mm-scroll-fabs">
+      <view
+        v-if="showBackTop"
+        class="mm-scroll-fab"
+        title="回到顶部"
+        aria-label="回到顶部"
+        @click="scrollToEdge('top')"
+      >
+        <uni-icons type="arrow-up" size="16" color="var(--mm-text)" />
+      </view>
+      <view
+        v-if="showBackBottom"
+        class="mm-scroll-fab"
+        title="回到底部"
+        aria-label="回到底部"
+        @click="scrollToEdge('bottom')"
+      >
+        <uni-icons type="arrow-down" size="16" color="var(--mm-text)" />
       </view>
     </view>
 
@@ -114,12 +139,16 @@
           :folders="store.state.tree"
           :current-id="currentFolderId"
           :loading="treeLoading"
+          :root-name="rootName"
+          :root-icon="rootIcon"
           @select="handleFolderSelect"
           @create="handleCreateFolder"
           @rename="handleRenameFolder"
           @move="handleMoveFolder"
           @remove="handleRemoveFolder"
           @change-icon="handleChangeIcon"
+          @rename-root="handleRenameRoot"
+          @change-icon-root="handleChangeIconRoot"
         />
         <view class="mm-pane__foot">
           <view class="mm-pane__link" @click="trashVisible = true">
@@ -156,6 +185,17 @@
               <view class="mm-mode__item" :class="{ 'is-active': mode === 'read' }" @click="mode = 'read'">阅读</view>
               <view v-if="!shareReadOnly" class="mm-mode__item" :class="{ 'is-active': mode === 'edit' }" @click="mode = 'edit'">编辑</view>
               <view class="mm-mode__spacer" />
+              <!-- 大纲开关：与阅读 / 编辑同一行，默认关闭 -->
+              <view
+                class="mm-mode__action"
+                :class="{ 'is-active': outlineVisible }"
+                :title="outlineVisible ? '隐藏大纲' : '显示大纲'"
+                :aria-label="outlineVisible ? '隐藏大纲' : '显示大纲'"
+                @click="toggleOutline"
+              >
+                <uni-icons type="list" size="15" color="var(--mm-text-weak)" />
+                <text class="mm-mode__action-label">大纲</text>
+              </view>
               <view
                 v-if="mode === 'edit' && !shareReadOnly"
                 class="mm-mode__action"
@@ -230,6 +270,16 @@
         <view v-else class="mm-empty" title="打开目录" aria-label="打开目录" @click="handleEmptyTap">
           <text>从左侧选择一篇文档</text>
         </view>
+
+        <!-- 大纲浮层：覆盖在正文右侧，不参与 flex 计算，避免像批注栏那样压塌正文高度 -->
+        <mm-outline
+          v-if="outlineVisible && store.state.currentFile"
+          class="mm-outline-pane"
+          :items="outlineItems"
+          :active-index="activeOutlineIndex"
+          @select="handleOutlineSelect"
+          @close="outlineVisible = false"
+        />
       </view>
     </view>
 
@@ -247,12 +297,16 @@
             :folders="store.state.tree"
             :current-id="currentFolderId"
             :loading="treeLoading"
+            :root-name="rootName"
+            :root-icon="rootIcon"
             @select="handleDrawerFolderSelect"
             @create="handleCreateFolder"
             @rename="handleRenameFolder"
             @move="handleMoveFolder"
             @remove="handleRemoveFolder"
             @change-icon="handleChangeIcon"
+            @rename-root="handleRenameRoot"
+            @change-icon-root="handleChangeIconRoot"
           />
           <view class="mm-pane__link" @click="drawerVisible = false; trashVisible = true">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
@@ -410,7 +464,7 @@
  * - 所有云对象调用集中在 common/api，不出现客户端直连数据库；
  * - 布局尺寸一律 px / rem，禁止 rpx。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useToast } from 'wot-design-uni'
 import { useAppStore } from '@/common/store/index.js'
@@ -443,6 +497,7 @@ import {
   remove as removeComment
 } from '@/common/api/mm-comment.js'
 import { getTempUrls, syncRefs } from '@/common/api/mm-image.js'
+import { updateRoot } from '@/common/api/mm-settings.js'
 import {
   isTokenInvalid,
   isLocalTokenExpired,
@@ -575,11 +630,75 @@ const themeIcon = computed(() =>
   isDarkTheme.value ? '/static/icons/theme-moon.svg' : '/static/icons/theme-sun.svg'
 )
 
+/**
+ * 账号功能是否开启。
+ * 必须等配置就绪再判定：store 里 account_enabled 默认 true，
+ * 若在配置回来之前渲染，关闭账号功能时顶栏会先闪一下登录按钮。
+ */
+const accountEnabled = computed(() => store.state.ready && store.state.config.account_enabled !== false)
+
 /** 提纯纯文本：唯一 offset 坐标系，供阅读器与批注使用 */
 const plainText = computed(() => {
   if (!mmText) return ''
   return mmText.stripMarkdown(store.state.editorContent)
 })
+
+/**
+ * 大纲条目：从 markdown 原文按 ATX 标题（# ~ ######）解析，跳过围栏代码块。
+ * index 是「第几个标题」的全局序号，阅读态按 data-mm-h 命中，
+ * 编辑态按 line 定位 CodeMirror 行。
+ */
+const outlineItems = computed(() => {
+  const source = typeof store.state.editorContent === 'string' ? store.state.editorContent : ''
+  const lines = source.split('\n')
+  const items = []
+  let inFence = false
+  let fenceMarker = ''
+  for (let line = 0; line < lines.length; line++) {
+    const text = lines[line]
+    const fence = /^\s{0,3}(`{3,}|~{3,})/.exec(text)
+    if (fence) {
+      if (!inFence) {
+        inFence = true
+        fenceMarker = fence[1][0]
+      } else if (fence[1][0] === fenceMarker) {
+        inFence = false
+        fenceMarker = ''
+      }
+      continue
+    }
+    if (inFence) continue
+    const heading = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(text)
+    if (!heading) continue
+    const title = heading[2].replace(/\s+#+\s*$/, '').trim()
+    if (!title) continue
+    items.push({ level: heading[1].length, text: title, line, index: items.length })
+  }
+  return items
+})
+
+/** 当前命中的大纲项（按滚动位置粗略取最后一个已滚过的标题） */
+const activeOutlineIndex = ref(-1)
+
+/** 是否显示大纲浮层：默认关闭 */
+const outlineVisible = ref(false)
+
+function toggleOutline() {
+  outlineVisible.value = !outlineVisible.value
+}
+
+/** 大纲跳转：阅读态滚到第 index 个标题，编辑态把光标定位到对应行 */
+function handleOutlineSelect(item) {
+  if (!item) return
+  activeOutlineIndex.value = item.index
+  if (mode.value === 'edit') {
+    const editor = editorRef.value
+    if (editor && typeof editor.scrollToLine === 'function') editor.scrollToLine(item.line)
+    return
+  }
+  const viewer = viewerRef.value
+  if (viewer && typeof viewer.scrollToHeading === 'function') viewer.scrollToHeading(item.index)
+}
 
 /** 编辑器受控内容代理：读写都落到 store.editorContent */
 const editorContentProxy = computed({
@@ -587,11 +706,102 @@ const editorContentProxy = computed({
   set: (value) => store.setEditor(value)
 })
 
+// ---------------- 回到顶部 / 回到底部 ----------------
+/**
+ * 正文滚动容器随模式变化：
+ * 阅读态是 mm-md-viewer 根节点（.mm-viewer，自带 overflow:auto），
+ * 编辑态是 CodeMirror 的 .cm-scroller。这里按「谁真的能滚」动态取，
+ * 不写死某一个选择器，切换模式后重新解析。
+ */
+let scrollHost = null
+
+const scrollState = ref({ scrollable: false, atTop: true, atBottom: true })
+
+/** 滚动到顶时只显示「回到底部」，到底时只显示「回到顶部」，中间两个都显示 */
+const showBackTop = computed(() => scrollState.value.scrollable && !scrollState.value.atTop)
+const showBackBottom = computed(() => scrollState.value.scrollable && !scrollState.value.atBottom)
+
+function resolveScrollHost() {
+  if (typeof document === 'undefined') return null
+  const root = document.querySelector('.mm-content')
+  if (!root) return null
+  if (scrollHost && root.contains(scrollHost) && scrollHost.scrollHeight > scrollHost.clientHeight + 8) {
+    return scrollHost
+  }
+  const candidates = root.querySelectorAll('.mm-viewer, .cm-scroller, .md-editor-content')
+  for (let i = 0; i < candidates.length; i++) {
+    const el = candidates[i]
+    if (el && el.scrollHeight > el.clientHeight + 8) return el
+  }
+  return root
+}
+
+function measureScroll() {
+  const el = resolveScrollHost()
+  if (!el) {
+    scrollState.value = { scrollable: false, atTop: true, atBottom: true }
+    return
+  }
+  scrollHost = el
+  const max = el.scrollHeight - el.clientHeight
+  const scrollable = max > 8
+  const top = Math.max(0, el.scrollTop || 0)
+  scrollState.value = {
+    scrollable,
+    atTop: top <= 4,
+    atBottom: top >= max - 4
+  }
+}
+
+/** 捕获阶段的 scroll 不冒泡，用 capture 才能同时接住阅读器与编辑器内部的滚动 */
+function handleContentScroll(event) {
+  if (typeof document === 'undefined') return
+  const root = document.querySelector('.mm-content')
+  const target = event && event.target
+  if (!root || !target || target.nodeType !== 1) return
+  if (!(target === root || root.contains(target))) return
+  scrollHost = target
+  measureScroll()
+}
+
+function scrollToEdge(edge) {
+  const el = scrollHost || resolveScrollHost()
+  if (!el) return
+  const top = edge === 'bottom' ? el.scrollHeight : 0
+  if (typeof el.scrollTo === 'function') {
+    el.scrollTo({ top, behavior: 'smooth' })
+    return
+  }
+  el.scrollTop = top
+}
+
 // ---------------- 生命周期 ----------------
+/**
+ * 直接从地址栏取 share_token。
+ * uni-app H5 的 onLoad options 在部分路由重建场景会漏掉 hash 里的 query，
+ * 这里补一条兜底读取，保证首次打开带令牌的链接就能跳转。
+ * @returns {string} 令牌，取不到返回空串
+ */
+function readShareTokenFromLocation() {
+  if (typeof window === 'undefined' || !window.location) return ''
+  try {
+    const url = new URL(window.location.href)
+    const direct = url.searchParams.get('share_token')
+    if (direct) return direct
+    const hash = url.hash || ''
+    const queryIndex = hash.indexOf('?')
+    if (queryIndex === -1) return ''
+    return new URLSearchParams(hash.slice(queryIndex + 1)).get('share_token') || ''
+  } catch (error) {
+    return ''
+  }
+}
+
 onLoad((options) => {
   updateViewport()
   // 分享链接可能藏在 hash 的 query 里，也可能因路由重建丢失；storage 兜底
-  const fromQuery = options && typeof options.share_token === 'string' ? options.share_token : ''
+  const fromQuery = (options && typeof options.share_token === 'string' ? options.share_token : '')
+    || readShareTokenFromLocation()
   const fromStorage = String(uni.getStorageSync('mm_pending_share_token') || '')
   pendingShareToken.value = fromQuery || fromStorage
   if (fromQuery) {
@@ -628,15 +838,21 @@ onMounted(() => {
   }
   if (typeof document !== 'undefined') {
     document.addEventListener('selectionchange', captureShellSelection)
+    document.addEventListener('scroll', handleContentScroll, true)
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', measureScroll)
   }
 })
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', updateViewport)
+    window.removeEventListener('resize', measureScroll)
   }
   if (typeof document !== 'undefined') {
     document.removeEventListener('selectionchange', captureShellSelection)
+    document.removeEventListener('scroll', handleContentScroll, true)
   }
   if (shellSelectionTimer) {
     clearTimeout(shellSelectionTimer)
@@ -648,12 +864,18 @@ onUnmounted(() => {
 })
 
 // 首屏就绪后加载目录树与文件列表
-watch(() => store.state.ready, (value) => {
+watch(() => store.state.ready, async (value) => {
   if (!value) return
   // 配置就绪后再做登录守卫，避免用默认配置误跳登录页；
   // 守卫判定登录态已失效时不拉数据，避免并发请求再触发一轮失效提示。
   const canBrowse = guardLogin()
-  if (canBrowse) bootstrap()
+  if (canBrowse) {
+    await bootstrap()
+    // 关键：onShow 首次触发时 ready 往往还是 false，会被提前 return 掉。
+    // 分享令牌必须在这里补一次解析，否则首次带 share_token 打开不会跳转，
+    // 只有第二次进入（storage 里还留着令牌、ready 已就绪）才生效。
+    await resolveShare()
+  }
 }, { immediate: true })
 
 // 编辑内容变化即视为未保存
@@ -661,9 +883,13 @@ watch(() => store.state.editorContent, () => {
   if (saveStatus.value === 'saved') saveStatus.value = 'dirty'
 })
 
-// 切到编辑态就没有「正文选区」这个概念了，浮动添加批注按钮必须收起
+// 切到编辑态就没有「正文选区」这个概念了，浮动添加批注按钮必须收起；
+// 滚动容器同时换人（阅读器 → CodeMirror），滚动按钮状态要重新量一次。
 watch(mode, () => {
   hasActiveSelection.value = false
+  scrollHost = null
+  activeOutlineIndex.value = -1
+  nextTick(measureScroll)
 })
 
 function updateViewport() {
@@ -850,6 +1076,7 @@ async function loadTree() {
   const res = await listTree()
   treeLoading.value = false
   if (res.code === 0) store.setTree(await attachIconUrls(res.data || []))
+  await loadRootIconUrl()
 }
 
 async function loadFiles(parentId) {
@@ -923,6 +1150,55 @@ function handleChangeIcon(node) {
   iconPickerVisible.value = true
 }
 
+// ---------------- 目录树根节点（全部文档） ----------------
+/**
+ * 根节点不是 mm-files 里的真实记录，名称与图标存在系统配置里（mm-settings.updateRoot），
+ * 这样才能多设备一致；前端只负责渲染与把改动写回配置。
+ */
+const ROOT_ICON_TARGET = '__mm_root__'
+const rootIconUrl = ref('')
+
+const rootName = computed(() => store.state.config.root_name || '')
+
+const rootIcon = computed(() => {
+  const icon = store.state.config.root_icon
+  if (!icon || !icon.value) return null
+  if (icon.type === 'preset') return icon
+  return { ...icon, url: rootIconUrl.value }
+})
+
+/** 自定义根图标要换成临时 URL 才能显示，预设图标直接用 static 资源 */
+async function loadRootIconUrl() {
+  const icon = store.state.config.root_icon
+  if (!icon || icon.type !== 'custom' || !icon.value) {
+    rootIconUrl.value = ''
+    return
+  }
+  const res = await getTempUrls({ file_ids: [icon.value] })
+  const map = res.code === 0 && res.data ? res.data : {}
+  rootIconUrl.value = map[icon.value] || ''
+}
+
+async function handleRenameRoot() {
+  const name = await openInput({
+    title: '重命名',
+    placeholder: '名称',
+    value: rootName.value || '全部文档'
+  })
+  if (!name) return
+  const res = await updateRoot({ name })
+  if (res.code === 0 && res.data) {
+    store.setConfig(res.data)
+    toast.show('已重命名')
+  }
+}
+
+function handleChangeIconRoot() {
+  iconPickerTarget.value = { _id: ROOT_ICON_TARGET }
+  iconPickerCurrent.value = rootIcon.value || null
+  iconPickerVisible.value = true
+}
+
 /**
  * 归一化图标结构：云端 normalizeIcon 只接受 {type:'preset'|'custom', value:string}，
  * 而本地草稿的 custom 图标还带 url（本地预览用）。这里剥掉前端专用字段，
@@ -945,6 +1221,17 @@ async function handleIconConfirm(icon) {
   // 结构非法时给出具体原因；合法请求失败时 call() 已弹出云端文案，不重复提示
   if (icon && !cloudIcon) {
     toast.show('图标格式不正确，请重新选择')
+    iconPickerTarget.value = null
+    return
+  }
+  // 根节点图标写系统配置，普通文件夹写 mm-files
+  if (target._id === ROOT_ICON_TARGET) {
+    const rootRes = await updateRoot({ icon: cloudIcon })
+    if (rootRes.code === 0 && rootRes.data) {
+      store.setConfig(rootRes.data)
+      await loadRootIconUrl()
+      toast.show('图标已更新')
+    }
     iconPickerTarget.value = null
     return
   }
@@ -983,6 +1270,14 @@ async function openDocument(file) {
   hasActiveSelection.value = false
   commentDetailVisible.value = false
   saveStatus.value = 'saved'
+  // 新正文的滚动位置与可用标题都变了：重新量一次并回到顶部
+  activeOutlineIndex.value = -1
+  scrollHost = null
+  nextTick(() => {
+    measureScroll()
+    if (scrollHost) scrollHost.scrollTop = 0
+    measureScroll()
+  })
   if (!content) {
     toast.show(readError || '未读取到文档内容')
   }
@@ -1570,6 +1865,9 @@ function captureShellSelection() {
     hasActiveSelection.value = false
     return
   }
+  // 批注输入弹层打开期间冻结锚点：用户在弹层里打字会让正文选区折叠，
+  // 若此时又去选别的段落，锚点会悄悄换成另一段，和弹层里展示的原文对不上。
+  if (commentDialogVisible.value) return
   // 可见性同步判定，点按钮时按钮要立刻淡出，不能等防抖
   const selection = window.getSelection()
   const collapsed = !(selection && selection.rangeCount > 0 && !selection.isCollapsed)
@@ -1596,10 +1894,36 @@ function openShellComment() {
   commentDialogVisible.value = true
 }
 
+/**
+ * 校验锚点在「当前正文」里是否仍然成立。
+ * 用户点「添加批注」后浏览器会折叠选区，输入批注期间正文也可能被改动（甚至换文档），
+ * 提交时必须按 plainText 复核一次，否则会把批注挂到错误位置。
+ * @param {object|null} offsets 缓存的锚点
+ * @returns {boolean} 仍然有效返回 true
+ */
+function isAnchorStillValid(offsets) {
+  if (!offsets || typeof offsets.start !== 'number' || typeof offsets.end !== 'number') return false
+  const text = plainText.value || ''
+  if (offsets.end > text.length) return false
+  if (text.slice(offsets.start, offsets.end) !== offsets.selectedText) return false
+  // 前后缀也一并复核：同一段文字在文中重复出现时，只比选中文本会误判
+  const prefixOk = !offsets.prefix || text.slice(offsets.start - offsets.prefix.length, offsets.start) === offsets.prefix
+  const suffixOk = !offsets.suffix || text.slice(offsets.end, offsets.end + offsets.suffix.length) === offsets.suffix
+  return prefixOk && suffixOk
+}
+
 async function submitShellComment() {
   const text = String(commentDialogText.value || '').trim()
   const offsets = annotationSelection.value
   if (!text || !offsets) return
+  if (!isAnchorStillValid(offsets)) {
+    // 位置变化：不提交，清掉失效锚点让用户重选，避免写进一条指向错误位置的批注
+    toast.show('批注位置已经变化，请重新选择')
+    annotationSelection.value = null
+    hasActiveSelection.value = false
+    commentDialogVisible.value = false
+    return
+  }
   await handleCreateComment({
     selectedText: offsets.selectedText,
     prefix: offsets.prefix,
@@ -1663,6 +1987,42 @@ async function saveBeforeNavigate() {
   })
 }
 
+/**
+ * 处理完分享令牌后把它从地址栏抹掉。
+ * 否则用户刷新 / 来回切换页面时 URL 里还带着 token，会反复触发同一跳转。
+ * hash 路由的 query 与普通 query 两种形态都要处理。
+ * @returns {void}
+ */
+function clearShareTokenFromUrl() {
+  if (typeof window === 'undefined') return
+  const history = window.history
+  const location = window.location
+  if (!history || typeof history.replaceState !== 'function' || !location) return
+  try {
+    const url = new URL(location.href)
+    let changed = false
+    if (url.searchParams.has('share_token')) {
+      url.searchParams.delete('share_token')
+      changed = true
+    }
+    const hash = url.hash || ''
+    const queryIndex = hash.indexOf('?')
+    if (queryIndex !== -1) {
+      const routePath = hash.slice(0, queryIndex)
+      const params = new URLSearchParams(hash.slice(queryIndex + 1))
+      if (params.has('share_token')) {
+        params.delete('share_token')
+        const rest = params.toString()
+        url.hash = rest ? `${routePath}?${rest}` : routePath
+        changed = true
+      }
+    }
+    if (changed) history.replaceState(history.state, '', url.toString())
+  } catch (error) {
+    // 老浏览器 / 受限环境不支持 URL 解析时忽略，不影响已完成的跳转
+  }
+}
+
 /** 幂等解析待处理的分享令牌；只读打开，不返回写授权 */
 async function resolveShare() {
   const token = pendingShareToken.value || String(uni.getStorageSync('mm_pending_share_token') || '')
@@ -1686,6 +2046,7 @@ async function resolveShare() {
     if (res.code !== 0 || !res.data) {
       toast.show(res.message || '分享链接无效')
       shareHandled.delete(token)
+      clearShareTokenFromUrl()
       return
     }
     const data = res.data
@@ -1703,8 +2064,13 @@ async function resolveShare() {
     activeCommentId.value = ''
     mode.value = 'read'
     saveStatus.value = 'saved'
+    activeOutlineIndex.value = -1
+    scrollHost = null
+    nextTick(measureScroll)
     await Promise.all([reloadComments(data.file_id), loadImageUrlMap(content)])
     toast.show('已打开共享文档（只读）')
+    // 只跳这一次：把 token 从地址栏移除，刷新或再次进入都不再重复跳转
+    clearShareTokenFromUrl()
   } finally {
     navigating = false
   }
@@ -1811,13 +2177,16 @@ async function handleTrashChanged() {
   await loadTree()
 }
 
-function handleImageSelect({ fileId, name, tempUrl }) {
+async function handleImageSelect({ fileId, name, tempUrl }) {
   if (!fileId) return
   // 记录 fileID → 临时 URL，供编辑器显示态渲染与保存时反替换
   if (tempUrl) imageUrlMap.value = { ...imageUrlMap.value, [fileId]: tempUrl }
   const editor = editorRef.value
   if (editor && typeof editor.insertImage === 'function') {
-    editor.insertImage(fileId, name)
+    // tempUrl 一并传入：props 传下去要等下一轮渲染，
+    // 只靠子组件读 props 会在插入瞬间拿不到新图 URL，退化成追加到末尾。
+    await nextTick()
+    editor.insertImage(fileId, name, tempUrl)
   } else {
     // 编辑器未就绪时退化为追加存储态 token
     const token = `![${name || '图片'}](mm-image://${fileId})`
@@ -1899,9 +2268,9 @@ function cancelInput() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  height: 48px;
-  padding: 0 14px;
+  gap: calc(12px * var(--mm-ui-scale, 1));
+  height: calc(48px * var(--mm-ui-scale, 1));
+  padding: 0 calc(14px * var(--mm-ui-scale, 1));
   flex: none;
   border-bottom: 1px solid var(--mm-border);
   background-color: var(--mm-surface);
@@ -1911,12 +2280,12 @@ function cancelInput() {
 .mm-topbar__right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   min-width: 0;
 }
 
 .mm-topbar__title {
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
   overflow: hidden;
@@ -1928,7 +2297,7 @@ function cancelInput() {
 .mm-topbar__status {
   flex: none;
   width: 8px;
-  height: 8px;
+  height: calc(8px * var(--mm-ui-scale, 1));
   border-radius: 50%;
   background-color: var(--mm-text-weak);
 }
@@ -1946,23 +2315,28 @@ function cancelInput() {
   opacity: 0.5;
 }
 
-/* 顶栏图标统一 16px，image 形态用于图标字体里没有的字形 */
+/* 顶栏图标统一按 UI 系数缩放，image 形态用于图标字体里没有的字形 */
 .mm-topbar__icon-img {
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--mm-ui-scale, 1));
+  height: calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-topbar__icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 4px;
+  min-width: calc(28px * var(--mm-ui-scale, 1));
+  height: calc(28px * var(--mm-ui-scale, 1));
+  padding: 0 calc(4px * var(--mm-ui-scale, 1));
   border-radius: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   cursor: pointer;
+}
+
+/* 图标字体是固定 px，用 scale 跟着 UI 系数走 */
+.mm-topbar__icon-btn :deep(.uni-icons) {
+  transform: scale(var(--mm-ui-scale, 1));
 }
 
 .mm-topbar__icon-btn:hover {
@@ -1974,7 +2348,7 @@ function cancelInput() {
 }
 
 .mm-topbar__login {
-  padding: 0 8px;
+  padding: 0 calc(8px * var(--mm-ui-scale, 1));
   color: var(--mm-accent);
   font-weight: 500;
 }
@@ -2017,8 +2391,8 @@ function cancelInput() {
 .mm-dialog__quote {
   display: block;
   margin-bottom: 10px;
-  padding: 6px 8px;
-  font-size: 12px;
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   background-color: var(--mm-surface-2);
   border-radius: 6px;
@@ -2027,7 +2401,7 @@ function cancelInput() {
 /* 批注详情：正文与元信息 */
 .mm-dialog__text {
   display: block;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   line-height: 1.7;
   color: var(--mm-text);
   white-space: pre-wrap;
@@ -2035,23 +2409,23 @@ function cancelInput() {
 
 .mm-dialog__meta {
   display: flex;
-  gap: 12px;
+  gap: calc(12px * var(--mm-ui-scale, 1));
   margin-top: 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 /* 分享有效期档位 */
 .mm-share__options {
   display: flex;
-  gap: 8px;
+  gap: calc(8px * var(--mm-ui-scale, 1));
   margin-bottom: 14px;
 }
 
 .mm-share__option {
   flex: 1;
-  padding: 8px 4px;
-  font-size: 12px;
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   text-align: center;
   color: var(--mm-text-weak);
   border: 1px solid var(--mm-border);
@@ -2094,9 +2468,49 @@ function cancelInput() {
 }
 
 .mm-pane--main {
+  position: relative;
   flex: 1;
   min-width: 0;
   background-color: var(--mm-bg);
+}
+
+/* 大纲浮层：绝对定位覆盖在正文右侧，不参与 flex 计算（避免压塌 .mm-content） */
+.mm-outline-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 12;
+  width: calc(240px * var(--mm-ui-scale, 1));
+}
+
+/* 回到顶部 / 回到底部：竖排在右下，起始位置高于底部两个浮钮 */
+.mm-scroll-fabs {
+  position: fixed;
+  right: 24px;
+  bottom: 76px;
+  z-index: 19;
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+}
+
+.mm-scroll-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(32px * var(--mm-ui-scale, 1));
+  height: calc(32px * var(--mm-ui-scale, 1));
+  color: var(--mm-text);
+  background-color: var(--mm-surface);
+  border: 1px solid var(--mm-border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.mm-scroll-fab:hover {
+  border-color: var(--mm-accent);
+  color: var(--mm-accent);
 }
 
 /* 打开文档后：文档区与批注栏左右并排。
@@ -2124,52 +2538,29 @@ function cancelInput() {
 
 /* 窄屏回退为上下排布，批注栏限高，避免仍挤掉正文 */
 @media (max-width: 900px) {
-  /* 375px 顶栏：缩小间距与按钮尺寸，状态文字让位给 icon */
+  /* 尺寸放大交给 --mm-ui-scale（<768px 时 1.16），这里只调整布局密度 */
   .mm-topbar {
-    gap: 6px;
-    padding: 0 10px;
+    gap: calc(4px * var(--mm-ui-scale, 1));
+    padding: 0 calc(10px * var(--mm-ui-scale, 1));
   }
 
   .mm-topbar__left,
   .mm-topbar__right {
-    gap: 4px;
+    gap: calc(2px * var(--mm-ui-scale, 1));
   }
 
-  .mm-topbar__icon-btn {
-    min-width: 26px;
-    height: 26px;
-    padding: 0 2px;
-  }
-
-  .mm-topbar__title {
-    font-size: 13px;
-  }
-
-  /* 375px 编辑栏：只留图标，四个按钮必然全部放得下 */
   .mm-mode {
-    padding: 0 8px;
-    gap: 4px;
-  }
-
-  .mm-mode__item {
-    padding: 3px 6px;
-    font-size: 11px;
-  }
-
-  .mm-mode__action {
-    padding: 3px 4px;
-    gap: 2px;
-  }
-
-  /* 只隐藏文字标签：uni-icons 在 H5 渲染为 <text class="uni-icons">，
-     用后代选择器 .mm-mode__action text 会把图标一起隐藏 */
-  .mm-mode__action-label {
-    display: none;
+    padding: calc(4px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
   }
 
   .mm-add-annotation-fab {
     right: 16px;
     bottom: 24px;
+  }
+
+  .mm-scroll-fabs {
+    right: 16px;
+    bottom: 76px;
   }
 
   .mm-pane--main.is-split {
@@ -2183,39 +2574,51 @@ function cancelInput() {
     border-left: none;
     border-top: 1px solid var(--mm-border);
   }
+
+  /* 窄屏大纲改成从底部弹出的横条，避免只占 240px 宽反而挡住正文 */
+  .mm-outline-pane {
+    top: auto;
+    left: 0;
+    width: 100%;
+    height: 40%;
+    border-left: none;
+    border-top: 1px solid var(--mm-border);
+  }
 }
 
 .mm-pane__foot {
   flex: none;
-  padding: 8px 12px;
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
   border-top: 1px solid var(--mm-border);
 }
 
 .mm-pane__link {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 4px;
-  font-size: 12px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
 }
 
-/* 阅读 / 编辑切换 */
+/* 阅读 / 编辑切换：允许换行，窄屏不再靠挤压或隐藏文字塞进一行 */
 .mm-mode {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 14px;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--mm-ui-scale, 1));
+  row-gap: calc(2px * var(--mm-ui-scale, 1));
+  min-height: calc(38px * var(--mm-ui-scale, 1));
+  padding: calc(4px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
   flex: none;
   border-bottom: 1px solid var(--mm-border);
   background-color: var(--mm-surface);
 }
 
 .mm-mode__item {
-  padding: 3px 10px;
-  font-size: 12px;
+  padding: calc(3px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   border-radius: 10px;
   cursor: pointer;
@@ -2228,17 +2631,22 @@ function cancelInput() {
 
 .mm-mode__spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .mm-mode__action {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
+  padding: calc(3px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
   border-radius: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
+}
+
+.mm-mode__action :deep(.uni-icons) {
+  transform: scale(var(--mm-ui-scale, 1));
 }
 
 .mm-mode__action:hover {
@@ -2263,7 +2671,7 @@ function cancelInput() {
   align-items: center;
   justify-content: center;
   height: 100%;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
 }
@@ -2282,13 +2690,13 @@ function cancelInput() {
   align-items: center;
   justify-content: space-between;
   flex: none;
-  height: 40px;
-  padding: 0 12px;
+  height: calc(40px * var(--mm-ui-scale, 1));
+  padding: 0 calc(12px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-drawer__title {
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -2298,7 +2706,7 @@ function cancelInput() {
   align-items: center;
   justify-content: center;
   width: 28px;
-  height: 28px;
+  height: calc(28px * var(--mm-ui-scale, 1));
   border-radius: 6px;
   cursor: pointer;
 }
@@ -2312,7 +2720,7 @@ function cancelInput() {
   max-height: 42%;
   overflow: auto;
   border-bottom: 1px solid var(--mm-border);
-  padding: 8px 0;
+  padding: calc(8px * var(--mm-ui-scale, 1)) 0;
 }
 
 .mm-drawer__list {
@@ -2322,13 +2730,13 @@ function cancelInput() {
 
 /* 通用输入弹层 */
 .mm-dialog {
-  padding: 18px 16px;
+  padding: calc(18px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-dialog__title {
   display: block;
   margin-bottom: 12px;
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -2336,19 +2744,19 @@ function cancelInput() {
 .mm-dialog__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   margin-top: 16px;
 }
 
 /* 移动到弹层 */
 .mm-move {
-  padding: 18px 16px 14px;
+  padding: calc(18px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
 }
 
 .mm-move__title {
   display: block;
   margin-bottom: 10px;
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -2358,14 +2766,14 @@ function cancelInput() {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
   margin-bottom: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-move__crumb {
-  padding: 2px 4px;
+  padding: calc(2px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
   border-radius: 4px;
   cursor: pointer;
 }
@@ -2391,8 +2799,8 @@ function cancelInput() {
 .mm-move__up {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
+  padding: calc(2px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
   border-radius: 4px;
   cursor: pointer;
 }
@@ -2411,11 +2819,11 @@ function cancelInput() {
 .mm-move__item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 34px;
-  padding-left: 12px;
-  padding-right: 10px;
-  font-size: 13px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
+  height: calc(34px * var(--mm-ui-scale, 1));
+  padding-left: calc(12px * var(--mm-ui-scale, 1));
+  padding-right: calc(10px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   cursor: pointer;
 }
@@ -2450,14 +2858,14 @@ function cancelInput() {
 
 .mm-move__reason {
   flex: none;
-  font-size: 11px;
+  font-size: calc(11px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-move__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   margin-top: 14px;
 }
 </style>

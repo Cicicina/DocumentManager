@@ -220,8 +220,8 @@ defineExpose({ clearSelection })
 .mm-list__toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
@@ -232,13 +232,13 @@ defineExpose({ clearSelection })
 .mm-list__sort {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 6px 12px;
+  gap: calc(14px * var(--mm-ui-scale, 1));
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-list__sort-item {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
 }
@@ -256,8 +256,8 @@ defineExpose({ clearSelection })
 .mm-list__row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
   cursor: pointer;
 }
@@ -268,7 +268,7 @@ defineExpose({ clearSelection })
 
 .mm-list__check {
   width: 15px;
-  height: 15px;
+  height: calc(15px * var(--mm-ui-scale, 1));
   flex: none;
   display: flex;
   align-items: center;
@@ -290,7 +290,7 @@ defineExpose({ clearSelection })
 
 .mm-list__name {
   display: block;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   overflow: hidden;
   white-space: nowrap;
@@ -300,13 +300,13 @@ defineExpose({ clearSelection })
 .mm-list__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
   margin-top: 4px;
 }
 
 .mm-list__meta {
   flex: none;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
@@ -321,7 +321,7 @@ defineExpose({ clearSelection })
   align-items: center;
   justify-content: center;
   width: 22px;
-  height: 22px;
+  height: calc(22px * var(--mm-ui-scale, 1));
   border-radius: 4px;
   cursor: pointer;
 }
@@ -334,17 +334,17 @@ defineExpose({ clearSelection })
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 48px 12px;
-  font-size: 13px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(48px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-list__empty-action {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
+  gap: calc(4px * var(--mm-ui-scale, 1));
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-accent);
   cursor: pointer;
 }

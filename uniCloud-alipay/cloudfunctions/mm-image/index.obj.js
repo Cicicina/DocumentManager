@@ -144,19 +144,42 @@ module.exports = {
       if (existing) return existing
 
       const timestamp = mm.now()
+      // 新图排最前：取当前最大 order + 1，避免与既有图片并列后掉到末尾。
+      // 用户拖动排序后写回的是显式 order，这里只负责「新上传的总在最前」。
+      let nextOrder = 0
+      try {
+        const maxRes = await mm.collection(TABLE.IMAGES)
+          .where({ user_id: ctx.uid })
+          .orderBy('order', 'desc')
+          .limit(1)
+          .field({ order: 1 })
+          .get()
+        const top = (maxRes && maxRes.data && maxRes.data[0]) || null
+        nextOrder = (top && Number.isFinite(Number(top.order)) ? Number(top.order) : 0) + 1
+      } catch (error) {
+        // order 字段尚未建立索引/历史数据缺失时退化为 0，不影响登记
+        nextOrder = 0
+      }
+      const baseDoc = {
+        file_id: fileId,
+        user_id: ctx.uid,
+        name,
+        extension,
+        size: Number.isFinite(size) && size > 0 ? Math.floor(size) : 0,
+        cloud_path: cloudPath,
+        ref_count: 0,
+        created_at: timestamp,
+        updated_at: timestamp
+      }
       let addedId = ''
       try {
-        const res = await mm.collection(TABLE.IMAGES).add({
-          file_id: fileId,
-          user_id: ctx.uid,
-          name,
-          extension,
-          size: Number.isFinite(size) && size > 0 ? Math.floor(size) : 0,
-          cloud_path: cloudPath,
-          ref_count: 0,
-          created_at: timestamp,
-          updated_at: timestamp
-        })
+        let res
+        try {
+          res = await mm.collection(TABLE.IMAGES).add(Object.assign({ order: nextOrder }, baseDoc))
+        } catch (error) {
+          // 云端 schema 尚未同步 order 字段时降级写入，图片上传不能被排序字段卡住
+          res = await mm.collection(TABLE.IMAGES).add(baseDoc)
+        }
         addedId = (res && (res.id || (res.ids && res.ids[0]))) || ''
       } catch (error) {
         throw bizError(ERR.IMAGE_REGISTER_FAILED, '图片登记失败')
@@ -179,8 +202,10 @@ module.exports = {
 
       const coll = mm.collection(TABLE.IMAGES)
       const counted = await coll.where(where).count()
+      // order 越大越靠前；同权重（历史数据 order 均为 0）时按上传时间倒序，保持原观感
       const res = await coll
         .where(where)
+        .orderBy('order', 'desc')
         .orderBy('created_at', 'desc')
         .skip(skip)
         .limit(pageSize)
@@ -234,6 +259,66 @@ module.exports = {
         page,
         pageSize
       }
+    })
+  },
+
+  /**
+   * 批量写入图片展示顺序（拖动排序后调用）。
+   * order 越大越靠前；前端只需把目标页内每张图的新 order 一并提交，
+   * 服务端逐条校验归属后写库，避免跨用户篡改。
+   * @param {{items:Array<{image_id:string, order:number}>}} param
+   * @returns {Promise<{updated:number}>}
+   */
+  async reorder(param) {
+    return run(this, async (ctx) => {
+      mm.AuthGuard.assertWrite(ctx, '')
+
+      const source = param || {}
+      const raw = Array.isArray(source.items) ? source.items : []
+      const items = []
+      const seen = new Set()
+      for (const item of raw) {
+        if (!item || typeof item !== 'object') continue
+        const imageId = typeof item.image_id === 'string' ? item.image_id.trim() : ''
+        const order = Number(item.order)
+        if (!imageId || !Number.isFinite(order) || seen.has(imageId)) continue
+        seen.add(imageId)
+        items.push({ image_id: imageId, order: Math.trunc(order) })
+      }
+      if (items.length === 0) throw bizError(ERR.PARAM_INVALID, '缺少图片顺序')
+      if (items.length > 200) throw bizError(ERR.PARAM_INVALID, '一次最多调整 200 张图片')
+
+      const ids = items.map(item => item.image_id)
+      const found = await mm.collection(TABLE.IMAGES)
+        .where({ _id: dbCommand.in(ids) })
+        .limit(200)
+        .get()
+      const recordMap = new Map(((found && found.data) || []).map(row => [row._id, row]))
+      for (const id of ids) {
+        const record = recordMap.get(id)
+        if (!record) throw bizError(ERR.NOT_FOUND, '图片不存在')
+        if (!canManage(ctx, record)) throw bizError(ERR.PERMISSION_DENIED, '没有操作权限')
+      }
+
+      const timestamp = mm.now()
+      let updated = 0
+      let lastError = null
+      for (const item of items) {
+        try {
+          const writeRes = await mm.collection(TABLE.IMAGES)
+            .doc(item.image_id)
+            .update({ order: item.order, updated_at: timestamp })
+          updated += Number(writeRes && (writeRes.updated || writeRes.affectedDocs)) || 0
+        } catch (error) {
+          lastError = error
+        }
+      }
+      // 一条都没写进去说明排序能力不可用（例如云端 schema 未包含 order），
+      // 明确报错让前端回滚顺序，不要假装成功。
+      if (updated === 0 && lastError) {
+        throw bizError(ERR.INTERNAL_ERROR, '排序保存失败，请稍后重试')
+      }
+      return { updated }
     })
   },
 

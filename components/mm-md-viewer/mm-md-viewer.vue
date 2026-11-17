@@ -76,9 +76,14 @@ const renderedHtml = computed(() => {
   return raw
 })
 
-/** 移除已有高亮标记，恢复原始文本节点 */
+/** 移除已有高亮标记与批注气泡，恢复原始文本节点 */
 function stripHighlights(el) {
   if (!el || typeof el.querySelectorAll !== 'function') return
+  const chips = el.querySelectorAll('.mm-chip')
+  for (let i = 0; i < chips.length; i++) {
+    const chip = chips[i]
+    if (chip.parentNode) chip.parentNode.removeChild(chip)
+  }
   const marks = el.querySelectorAll('mark.mm-anchor')
   for (let i = 0; i < marks.length; i++) {
     const mark = marks[i]
@@ -89,10 +94,22 @@ function stripHighlights(el) {
   }
 }
 
+/**
+ * 给标题打序号锚点：大纲按「第几个标题」跳转，与 markdown 解析出的序号一一对应。
+ * 只加属性不加节点，不影响 plainText ↔ DOM 的 offset 映射。
+ */
+function applyHeadingAnchors() {
+  const el = resolveContentEl()
+  if (!el || typeof el.querySelectorAll !== 'function') return
+  const headings = el.querySelectorAll('h1,h2,h3,h4,h5,h6')
+  for (let i = 0; i < headings.length; i++) headings[i].setAttribute('data-mm-h', String(i))
+}
+
 /** 重建映射并按 active 批注高亮（从后往前，避免 splitText 影响前面区间） */
 function applyHighlights() {
   const el = resolveContentEl()
   if (!el) return
+  applyHeadingAnchors()
   stripHighlights(el)
   // 强制重建映射，保证与当前 DOM 一致（高亮会拆分文本节点）
   buildDomPlainMap(el, props.plainText || '', true)
@@ -110,23 +127,50 @@ function applyHighlights() {
       marks[i].setAttribute('data-comment-id', comment._id || '')
       created.push(marks[i])
     }
-    // 气泡：把批注内容截断后挂到该段最后一个 mark 上，由 CSS ::after 渲染，
-    // 不向 v-html 里插入真实节点，避免打乱 plainText ↔ DOM 的 offset 映射。
-    const chip = buildChipText(comment.comment)
-    if (chip && created.length) created[created.length - 1].setAttribute('data-chip', chip)
+    // 气泡挂在锚点最后一个 mark 之后，用真实节点渲染，
+    // 「查看全部」才不会像伪元素那样被 text-overflow 裁掉、也没法单独点。
+    // 气泡整体带 data-mm-ignore，collectTextNodes 会跳过它，offset 映射不受影响。
+    if (created.length) appendChip(created[created.length - 1], comment)
   }
 }
 
 /**
- * 批注气泡文案：内容过长时截断并追加「查看全部」提示。
+ * 在锚点文字后面插入批注气泡：截断内容 + 可点击的「查看全部」。
+ * @param {HTMLElement} anchorMark 该批注最后一个高亮 mark
+ * @param {object} comment 批注记录
+ * @returns {void}
+ */
+function appendChip(anchorMark, comment) {
+  if (!anchorMark || !anchorMark.parentNode) return
+  const parent = anchorMark.parentNode
+  const chip = document.createElement('span')
+  chip.className = 'mm-chip'
+  chip.setAttribute('data-mm-ignore', '')
+  chip.setAttribute('data-comment-id', comment._id || '')
+
+  const text = document.createElement('span')
+  text.className = 'mm-chip__text'
+  text.textContent = buildChipText(comment.comment)
+  chip.appendChild(text)
+
+  const more = document.createElement('span')
+  more.className = 'mm-chip__more'
+  more.textContent = '查看全部'
+  chip.appendChild(more)
+
+  parent.insertBefore(chip, anchorMark.nextSibling)
+}
+
+/**
+ * 批注气泡文案：只放截断后的内容，「查看全部」由独立元素渲染。
  * @param {string} text 批注原文
- * @returns {string} 气泡文案；无内容时返回空串
+ * @returns {string} 气泡文案；无内容时返回「批注」
  */
 function buildChipText(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim()
-  if (!value) return ''
-  if (value.length <= 40) return `批注：${value}`
-  return `批注：${value.slice(0, 40)}… 查看全部`
+  if (!value) return '批注'
+  if (value.length <= 24) return value
+  return `${value.slice(0, 24)}…`
 }
 
 async function refresh() {
@@ -156,14 +200,13 @@ watch(() => [props.comments, props.activeCommentId], () => {
 function handleClick(event) {
   const target = event && event.target
   if (!target || typeof target.closest !== 'function') return
-  const mark = target.closest('mark.mm-anchor')
-  if (!mark) return
-  const commentId = mark.getAttribute('data-comment-id')
+  // 气泡与高亮文字都能打开同一条批注详情
+  const hit = target.closest('mark.mm-anchor') || target.closest('.mm-chip')
+  if (!hit) return
+  const commentId = hit.getAttribute('data-comment-id')
   const comment = (props.comments || []).find(item => item && item._id === commentId)
   if (!comment) return
-  // 气泡要渲染到阅读器外层，避免被 .mm-viewer 的 overflow:auto 裁切；
-  // 这里把被点中的 mark 视口矩形一并抛出，由主壳定位气泡。
-  const rect = typeof mark.getBoundingClientRect === 'function' ? mark.getBoundingClientRect() : null
+  const rect = typeof hit.getBoundingClientRect === 'function' ? hit.getBoundingClientRect() : null
   emit('select-comment', {
     comment,
     rect: rect ? { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } : null
@@ -176,13 +219,22 @@ function scrollToOffset(offset) {
   if (el) scrollPlainOffset(el, offset)
 }
 
+/** 滚动到第 index 个标题（大纲跳转），序号与 markdown 解析顺序一致 */
+function scrollToHeading(index) {
+  const el = resolveContentEl()
+  if (!el || typeof el.querySelector !== 'function') return
+  const target = el.querySelector(`[data-mm-h="${Number(index)}"]`)
+  if (!target || typeof target.scrollIntoView !== 'function') return
+  target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
+
 /** 高亮指定区间（供外部按需调用） */
 function highlight(start, end) {
   const el = resolveContentEl()
   if (el) highlightRange(el, start, end)
 }
 
-defineExpose({ scrollToOffset, highlightRange: highlight, refresh })
+defineExpose({ scrollToOffset, scrollToHeading, highlightRange: highlight, refresh })
 </script>
 
 <style scoped>
@@ -280,25 +332,44 @@ defineExpose({ scrollToOffset, highlightRange: highlight, refresh })
 
 /*
  * 批注气泡：贴在锚点文字右侧，随正文流动。
- * 用 ::after + attr(data-chip) 渲染，不向 v-html 插入真实节点，
- * 否则 DOM 文本会多出气泡内容，plainText 的 offset 映射整体错位。
+ * 用真实 DOM 节点而不是 ::after 伪元素 —— 伪元素的文本会被 text-overflow
+ * 一起裁掉，「查看全部」既看不见也点不到。
+ * 气泡带 data-mm-ignore，collectTextNodes 跳过它，offset 映射不受影响。
  */
-.mm-viewer__body :deep(mark.mm-anchor[data-chip])::after {
-  content: attr(data-chip);
-  display: inline-block;
-  max-width: 12em;
+.mm-viewer__body :deep(.mm-chip) {
+  display: inline-flex;
+  align-items: center;
+  max-width: 16em;
   margin-left: 4px;
   padding: 0 6px;
-  overflow: hidden;
   font-size: 11px;
   font-weight: normal;
   line-height: 18px;
-  color: var(--mm-text-weak);
-  white-space: nowrap;
-  text-overflow: ellipsis;
   vertical-align: middle;
+  color: var(--mm-text-weak);
   background-color: var(--mm-surface-2);
   border: 1px solid var(--mm-border);
   border-radius: 9px;
+  cursor: pointer;
+}
+
+.mm-viewer__body :deep(.mm-chip:hover) {
+  border-color: var(--mm-accent);
+}
+
+/* 只有内容部分会被截断，「查看全部」永远完整可见 */
+.mm-viewer__body :deep(.mm-chip__text) {
+  min-width: 0;
+  max-width: 10em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mm-viewer__body :deep(.mm-chip__more) {
+  flex: none;
+  margin-left: 4px;
+  color: var(--mm-accent);
+  white-space: nowrap;
 }
 </style>

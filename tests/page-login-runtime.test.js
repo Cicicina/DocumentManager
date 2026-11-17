@@ -84,7 +84,8 @@ function createPageDeps(options) {
   const apiNames = [
     'listTree', 'listFiles', 'createFolder', 'registerUpload', 'importFile',
     'getContent', 'saveContent', 'rename', 'move', 'updateIcon', 'softDelete',
-    'exportFile', 'listByFile', 'add', 'update', 'remove', 'getTempUrls', 'syncRefs'
+    'exportFile', 'listByFile', 'add', 'update', 'remove', 'getTempUrls', 'syncRefs',
+    'updateRoot'
   ]
   const apiStubs = {}
   for (const name of apiNames) apiStubs[name] = apiStub(name)
@@ -100,6 +101,7 @@ function createPageDeps(options) {
       }
     },
     watch: (getter, cb, options) => calls.watchers.push({ getter, cb, options }),
+    nextTick: fn => (typeof fn === 'function' ? Promise.resolve().then(fn) : Promise.resolve()),
     onLoad: cb => { calls.lifecycles.onLoad = cb },
     onShow: cb => { calls.lifecycles.onShow = cb },
     onMounted: cb => { calls.lifecycles.onMounted = cb },
@@ -527,8 +529,10 @@ test('源码复核：guardLogin 返回 boolean，且唯一调用点 watch(ready)
 
   // 定义 1 处 + 调用 1 处，无遗留的旧「无返回」调用点
   assert.equal(Array.from(page.matchAll(/\bguardLogin\(\)/g)).length, 2)
-  assert.match(page, /const canBrowse = guardLogin\(\)\s*\n\s*if \(canBrowse\) bootstrap\(\)/,
+  assert.match(page, /const canBrowse = guardLogin\(\)/,
     'watch(ready) 必须消费 boolean 返回值')
+  assert.match(page, /if \(canBrowse\) \{?[\s\S]{0,120}?bootstrap\(\)/,
+    'canBrowse 为 true 时才允许 bootstrap')
 
   const onShowBody = /onShow\(\(\) => \{[\s\S]*?\n\}\)/.exec(page)[0]
   assert.ok(!/guardLogin\(\)/.test(onShowBody), 'onShow 不应再调用 guardLogin')

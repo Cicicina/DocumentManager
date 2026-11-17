@@ -54,12 +54,12 @@ function onDiscard() {
 
 <style scoped>
 .mm-conflict {
-  padding: 20px 18px 16px;
+  padding: calc(20px * var(--mm-ui-scale, 1)) calc(18px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-conflict__title {
   display: block;
-  font-size: 15px;
+  font-size: calc(15px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -67,7 +67,7 @@ function onDiscard() {
 .mm-conflict__desc {
   display: block;
   margin-top: 8px;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   line-height: 1.6;
   color: var(--mm-text-weak);
 }
@@ -81,19 +81,19 @@ function onDiscard() {
 
 .mm-conflict__preview-title {
   display: block;
-  padding: 6px 10px;
-  font-size: 12px;
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   background-color: var(--mm-surface-2);
 }
 
 .mm-conflict__preview-body {
   max-height: 140px;
-  padding: 8px 10px;
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
 }
 
 .mm-conflict__preview-text {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   line-height: 1.6;
   color: var(--mm-text-weak);
   white-space: pre-wrap;
@@ -103,7 +103,7 @@ function onDiscard() {
 .mm-conflict__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   margin-top: 18px;
 }
 </style>

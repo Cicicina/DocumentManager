@@ -27,6 +27,12 @@ export const remove = (param = {}) => call('mmImage', 'remove', param)
 export const removeSilent = (param = {}) => callSilent('mmImage', 'remove', param)
 
 /**
+ * 批量写入图片展示顺序（拖动排序）。order 越大越靠前。
+ * @param {{items:Array<{image_id:string, order:number}>}} param
+ */
+export const reorder = (param = {}) => call('mmImage', 'reorder', param)
+
+/**
  * 按文档对齐图片引用（幂等）。保存成功后调用，失败静默、下次保存自愈。
  * @param {{doc_id:string, content?:string, rebuild?:boolean}} param
  */

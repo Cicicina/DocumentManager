@@ -17,6 +17,13 @@ export const ensureConfig = (param = {}) => call('mmSettings', 'ensureConfig', p
 /** 更新账号 / 权限开关（服务端校验用户数与管理员身份） */
 export const updateConfig = (param = {}) => call('mmSettings', 'updateConfig', param)
 
+/**
+ * 更新目录树根节点的显示名称 / 图标。
+ * 根节点不是 mm-files 里的真实记录，名称与图标存在系统配置中，多端一致。
+ * @param {{name?:string, icon?:object|null}} param
+ */
+export const updateRoot = (param = {}) => call('mmSettings', 'updateRoot', param)
+
 /** 用户列表（权限开启时仅管理员） */
 export const listUsers = (param = {}) => call('mmSettings', 'listUsers', param)
 

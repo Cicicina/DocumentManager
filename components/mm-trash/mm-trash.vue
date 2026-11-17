@@ -151,18 +151,18 @@ defineExpose({ refresh })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: calc(14px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-trash__title {
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
 
 .mm-trash__close {
-  padding: 4px;
+  padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
 }
 
@@ -174,14 +174,14 @@ defineExpose({ refresh })
 .mm-trash__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-trash__check {
   width: 15px;
-  height: 15px;
+  height: calc(15px * var(--mm-ui-scale, 1));
   flex: none;
   display: flex;
   align-items: center;
@@ -204,7 +204,7 @@ defineExpose({ refresh })
 
 .mm-trash__name {
   display: block;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text);
   overflow: hidden;
   white-space: nowrap;
@@ -212,22 +212,22 @@ defineExpose({ refresh })
 }
 
 .mm-trash__meta {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-trash__empty {
-  padding: 48px 16px;
+  padding: calc(48px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   text-align: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-trash__foot {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
   border-top: 1px solid var(--mm-border);
 }
 </style>

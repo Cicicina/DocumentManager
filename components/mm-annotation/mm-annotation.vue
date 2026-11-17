@@ -233,13 +233,13 @@ function submitDialog() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
   flex: none;
   border-bottom: 1px solid var(--mm-border);
 }
 
 .mm-annotation__title {
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -250,7 +250,7 @@ function submitDialog() {
 }
 
 .mm-annotation__item {
-  padding: 10px 14px;
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
   border-bottom: 1px solid var(--mm-border);
   cursor: pointer;
 }
@@ -266,13 +266,13 @@ function submitDialog() {
 .mm-annotation__quote-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6px * var(--mm-ui-scale, 1));
 }
 
 .mm-annotation__quote {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   overflow: hidden;
   white-space: nowrap;
@@ -281,8 +281,8 @@ function submitDialog() {
 
 .mm-annotation__badge {
   flex: none;
-  padding: 1px 6px;
-  font-size: 11px;
+  padding: calc(1px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
+  font-size: calc(11px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   border: 1px solid var(--mm-border);
   border-radius: 4px;
@@ -291,7 +291,7 @@ function submitDialog() {
 .mm-annotation__text {
   display: block;
   margin-top: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
   line-height: 1.6;
   color: var(--mm-text);
 }
@@ -304,30 +304,30 @@ function submitDialog() {
 }
 
 .mm-annotation__time {
-  font-size: 11px;
+  font-size: calc(11px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
 }
 
 .mm-annotation__actions {
   display: flex;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
 }
 
 .mm-annotation__action {
-  font-size: 12px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-accent);
   cursor: pointer;
 }
 
 
 .mm-annotation__dialog {
-  padding: 18px 16px;
+  padding: calc(18px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
 }
 
 .mm-annotation__dialog-title {
   display: block;
   margin-bottom: 10px;
-  font-size: 14px;
+  font-size: calc(14px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
 }
@@ -335,8 +335,8 @@ function submitDialog() {
 .mm-annotation__dialog-quote {
   display: block;
   margin-bottom: 10px;
-  padding: 6px 8px;
-  font-size: 12px;
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
+  font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   background-color: var(--mm-surface-2);
   border-radius: 6px;
@@ -345,7 +345,7 @@ function submitDialog() {
 .mm-annotation__dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--mm-ui-scale, 1));
   margin-top: 16px;
 }
 </style>

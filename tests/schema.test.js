@@ -161,8 +161,9 @@ test('mm-images / mm-settings / mm-user-permissions 字段与架构 2.3/2.5/2.6 
   const images = schemaOf('mm-images')
   assert.deepEqual(images.required.sort(), [
     'file_id', 'user_id', 'name', 'extension', 'size', 'cloud_path',
-    'ref_count', 'created_at', 'updated_at'
+    'ref_count', 'order', 'created_at', 'updated_at'
   ].sort())
+  assert.equal(images.properties.order.defaultValue, 0, '图片顺序权重默认 0，order 越大越靠前')
 
   const settings = schemaOf('mm-settings')
   assert.deepEqual(settings.required.sort(), [

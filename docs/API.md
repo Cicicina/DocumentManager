@@ -91,13 +91,14 @@
 
 ---
 
-## 4. `mm-settings` — 配置与权限（6 个方法）
+## 4. `mm-settings` — 配置与权限（7 个方法）
 
 | 方法 | 入参 | 出参 `data` | 权限 | 主要错误码 |
 | --- | --- | --- | --- | --- |
-| `getConfig` | `{}` | `{ account_enabled, permission_enabled, admin_user_id, anonymous }` | **无需登录** | 9999 |
+| `getConfig` | `{}` | `{ account_enabled, permission_enabled, admin_user_id, root_name, root_icon, anonymous }` | **无需登录** | 9999 |
 | `ensureConfig` | `{}` | 配置文档 | 需 ctx（匿名可） | 9999 |
 | `updateConfig` | `{ account_enabled?, permission_enabled? }` | 更新后配置 | 管理员（匿名放行） | 1001 / 1002 / 1003 / **4001** / **4005** |
+| `updateRoot` | `{ name?, icon? }` | 更新后配置（`root_name` / `root_icon`） | 管理员（匿名放行） | 1001 / 1002 / 1003 |
 | `listUsers` | `{ page, pageSize }` | `{ list, total }`（含 role / can_read / can_write） | 仅管理员 | 1002 / 1003 |
 | `setUserPermission` | `{ user_id, can_read, can_write }` | 权限记录 | 仅管理员 | 1001 / 1002 / 1003 / 1004 |
 | `ensureAdmin` | `{}` | `{ admin_user_id }` | 仅管理员 | 1003 |
@@ -109,12 +110,13 @@
 
 ---
 
-## 5. `mm-image` — 图片（5 个方法）
+## 5. `mm-image` — 图片（6 个方法）
 
 | 方法 | 入参 | 出参 `data` | 权限 | 主要错误码 |
 | --- | --- | --- | --- | --- |
 | `register` | `{ file_id, name, extension, size, cloud_path }` | 图片记录（**幂等**：同一 fileID 返回已有记录） | 写 | 1001 / 1002 / 1003 / 4006 |
-| `list` | `{ page, pageSize }` | `{ list, total }`（含 `ref_count` 与 `uploader_nickname`） | 读 | 1002 |
+| `list` | `{ page, pageSize }` | `{ list, total }`（含 `ref_count` 与 `uploader_nickname`，按 `order` 倒序） | 读 | 1002 |
+| `reorder` | `{ items: [{ image_id, order }] }` | `{ updated }`（`order` 越大越靠前） | 写 | 1001 / 1002 / 1003 / 1004 |
 | `getTempUrls` | `{ file_ids: string[] }` | `{ [fileID]: tempUrl }` | 读 | 1001 / 1002 / 3003 |
 | `remove` | `{ image_ids: string[], force?: boolean }` | `{ deleted, deletedKeys }`；被引用且未带 `force` 时返回 `4011` 与 `{ refs: [{ image_id, file_id, ref_count, docs }] }` | 写 | 1001 / 1002 / 1003 / 3002 / 4011 |
 | `syncRefs` | `{ doc_id, content?, rebuild? }` | `{ added, removed, total }`（幂等，按文档全量对齐引用） | 写 | 1001 / 1002 / 1003 / 1004 |
