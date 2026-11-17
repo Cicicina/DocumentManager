@@ -156,7 +156,25 @@ function appendChip(anchorMark, comment) {
   const more = document.createElement('span')
   more.className = 'mm-chip__more'
   more.textContent = '查看全部'
+  // 关键修复：uni-app H5 的 <view @click> 事件 target 是包装对象、无 closest，
+  // 靠父容器事件委托 + closest 解析会静默失败（「查看全部」点不开的真正根因）。
+  // 这里给动态创建的按钮直接绑原生 click，闭包捕获当前批注，点击即 emit，
+  // 完全绕开事件对象 target 解析。stopPropagation 避免再触发父容器委托逻辑。
+  more.addEventListener('click', (event) => {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+    emit('view-all-comments', comment || null)
+  })
   chip.appendChild(more)
+
+  // 气泡正文：点它打开单条详情，同样直接绑定
+  text.addEventListener('click', (event) => {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+    const rect = typeof chip.getBoundingClientRect === 'function' ? chip.getBoundingClientRect() : null
+    emit('select-comment', {
+      comment,
+      rect: rect ? { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right } : null
+    })
+  })
 
   parent.insertBefore(chip, anchorMark.nextSibling)
 }
@@ -197,18 +215,49 @@ watch(() => [props.comments, props.activeCommentId], () => {
   }
 }, { deep: true })
 
+/**
+ * 从 uni-app 的点击事件里取出真正的 DOM 元素。
+ *
+ * 关键坑（导致「查看全部」点不开的真正根因）：
+ * uni-app H5 中 <view> 是组件，@click 的 event.target 是 uni 包装对象（普通 object），
+ * 没有 closest / getAttribute 等 DOM 方法。原生 MouseEvent 藏在 event.$event / event.mp 里，
+ * 真实 DOM 元素在其 target 上。必须逐个候选源尝试，找到第一个带 closest 的真 DOM 元素。
+ *
+ * 兜底：用点击坐标 elementFromPoint，覆盖事件对象始终拿不到原生 target 的情况。
+ */
+function resolveDomTarget(event) {
+  const candidates = [
+    event && event.$event && event.$event.target,
+    event && event.mp && event.mp.target,
+    event && event.detail && event.detail.target,
+    event && event.target && event.target.$el,
+    event && event.target
+  ]
+  for (const el of candidates) {
+    if (el && typeof el.closest === 'function') return el
+  }
+  // 坐标兜底：不同端把 clientX/Y 放在原生事件或包装层
+  const pos = (event && event.$event) || event || {}
+  if (typeof pos.clientX === 'number' && typeof pos.clientY === 'number' && typeof document !== 'undefined') {
+    try {
+      const el = document.elementFromPoint(pos.clientX, pos.clientY)
+      if (el && typeof el.closest === 'function') return el
+    } catch (e) { /* elementFromPoint 在某些 WebView 不可用 */ }
+  }
+  return null
+}
+
 function handleClick(event) {
-  const target = event && event.target
+  const target = resolveDomTarget(event)
   if (!target || typeof target.closest !== 'function') return
 
-  // 「查看全部」优先判定：它可能在 mark 之外、也可能点中其内部文字节点，
-  // 必须先用 closest 命中再取 data-comment-id，避免被后面的 hit 判定吞掉。
+  // 「查看全部」与气泡正文已在 appendChip 里直接绑定事件，这里主要处理 mark 高亮点击。
+  // 仍保留 more 判定作为兜底（例如事件委托先于直接绑定触发时）。
   const more = target.closest('.mm-chip__more')
   if (more) {
     const chip = more.closest('.mm-chip')
     const commentId = chip && chip.getAttribute('data-comment-id')
     const comment = (props.comments || []).find(item => item && item._id === commentId)
-    // 携带用户点击的那条批注，主壳据此定位到对应段落
     emit('view-all-comments', comment || null)
     return
   }
