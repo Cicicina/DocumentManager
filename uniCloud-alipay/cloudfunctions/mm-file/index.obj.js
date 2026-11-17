@@ -475,7 +475,7 @@ module.exports = {
 
       let addedId = ''
       try {
-        const res = await mm.collection(TABLE.FILES).add({
+        const record = {
           type: 'folder',
           user_id: ctx.uid,
           parent_id: parentId,
@@ -485,12 +485,15 @@ module.exports = {
           size: 0,
           content_hash: '',
           tags: [],
-          icon,
           version: 0,
           is_delete: false,
           created_at: timestamp,
           updated_at: timestamp
-        })
+        }
+        // 未选图标时不落 icon 字段：写入 null 会让后续 updateIcon 报
+        // "Cannot create field 'type' in element {icon: null}"（见 updateIcon 注释）
+        if (icon) record.icon = icon
+        const res = await mm.collection(TABLE.FILES).add(record)
         addedId = (res && (res.id || (res.ids && res.ids[0]))) || ''
       } catch (error) {
         throw bizError(ERR.FOLDER_CREATE_FAILED, '文件夹创建失败')
@@ -779,10 +782,14 @@ module.exports = {
       assertWritable(ctx, doc)
       if (doc.type !== 'folder') throw bizError(ERR.PARAM_INVALID, '只有文件夹可设置图标')
       const icon = normalizeIcon(source.icon)
-      await mm.collection(TABLE.FILES).doc(folderId).update({
-        icon,
-        updated_at: mm.now()
-      })
+      // 必须用 set / remove 指令整体替换 icon：直接传普通对象会被 uniCloud 展开成
+      // icon.type / icon.value 点号路径，而历史文件夹记录里 icon 常为 null（建文件夹时写入），
+      // MongoDB 无法在 null 上创建子字段，会抛
+      // "Cannot create field 'type' in element {icon: null}"（errCode 100104）。
+      const patch = { updated_at: mm.now() }
+      if (icon) patch.icon = dbCommand.set(icon)
+      else patch.icon = dbCommand.remove()
+      await mm.collection(TABLE.FILES).doc(folderId).update(patch)
       return await mm.getDoc(TABLE.FILES, folderId)
     })
   },

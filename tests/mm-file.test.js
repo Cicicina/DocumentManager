@@ -456,3 +456,65 @@ test('rename：同目录撞名追加 -copyN（AC-02 服务端侧）', async () =
   assert.equal(result.errCode, 0, result.errMsg)
   assert.equal(result.data.name, 'a-copy1.md')
 })
+
+// ---------------------------------------------------------------------------
+// 文件夹图标
+// ---------------------------------------------------------------------------
+
+/** 预置一个文件夹记录 */
+function seedFolder(mock, patch) {
+  return mock.__seed('mm-files', Object.assign({
+    type: 'folder',
+    user_id: ANON,
+    parent_id: '',
+    name: 'dir',
+    extension: '',
+    storage_key: '',
+    size: 0,
+    content_hash: '',
+    tags: [],
+    icon: null,
+    version: 0,
+    is_delete: false,
+    created_at: new Date('2024-01-01T00:00:00Z'),
+    updated_at: new Date('2024-01-01T00:00:00Z')
+  }, patch || {}))
+}
+
+test('createFolder 未选图标时不落 icon 字段（null 会阻断后续设置）', async () => {
+  const mock = createAnonEnv({ storage: {} })
+  const mmFile = loadCloudObject('mm-file', mock)
+
+  const result = await callObject(mmFile, 'createFolder', { name: '新建文件夹' })
+
+  assert.equal(result.errCode, 0, result.errMsg)
+  const row = mock.__rows('mm-files').find(item => item._id === result.data._id)
+  assert.equal(Object.prototype.hasOwnProperty.call(row, 'icon'), false, '不应写入 icon: null')
+})
+
+test('updateIcon：历史记录 icon 为 null 时仍可设置（必须用 set 整体替换）', async () => {
+  const mock = createAnonEnv({ storage: {} })
+  const folder = seedFolder(mock)
+  const mmFile = loadCloudObject('mm-file', mock)
+
+  const result = await callObject(mmFile, 'updateIcon', {
+    folder_id: folder._id,
+    icon: { type: 'preset', value: 'folder-blue' }
+  })
+
+  assert.equal(result.errCode, 0, result.errMsg)
+  assert.deepEqual(result.data.icon, { type: 'preset', value: 'folder-blue' })
+  assert.equal(mock.__log.updates[0].patch.icon.__op, 'set', 'icon 不能裸传对象，否则线上被展开成点号路径')
+})
+
+test('updateIcon 传 null：移除 icon 字段而非写入 null', async () => {
+  const mock = createAnonEnv({ storage: {} })
+  const folder = seedFolder(mock, { icon: { type: 'preset', value: 'folder-blue' } })
+  const mmFile = loadCloudObject('mm-file', mock)
+
+  const result = await callObject(mmFile, 'updateIcon', { folder_id: folder._id, icon: null })
+
+  assert.equal(result.errCode, 0, result.errMsg)
+  const row = mock.__rows('mm-files').find(item => item._id === folder._id)
+  assert.equal(Object.prototype.hasOwnProperty.call(row, 'icon'), false, 'icon 字段应被删除')
+})

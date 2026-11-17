@@ -104,6 +104,30 @@ function sortValue(value) {
 }
 
 /**
+ * 应用更新 patch（支持 db.command.set / db.command.remove 更新指令）。
+ *
+ * 真实 uniCloud 会把普通嵌套对象展开成点号路径写入，因此整体替换对象字段必须用 set；
+ * Mock 无法复现那种失败，只能保证 set/remove 的语义与线上一致。
+ * @param {object} record 目标记录（原地修改）
+ * @param {object} patch 更新字段
+ * @returns {void}
+ */
+function applyPatch(record, patch) {
+  for (const key of Object.keys(patch)) {
+    const value = patch[key]
+    if (isOp(value) && value.__op === 'remove') {
+      delete record[key]
+      continue
+    }
+    if (isOp(value) && value.__op === 'set') {
+      record[key] = clone(value.value)
+      continue
+    }
+    record[key] = clone(value)
+  }
+}
+
+/**
  * 创建 uniCloud Mock。
  * @param {object} [options] 初始选项
  * @returns {object} mock 实例（可直接赋给 globalThis.uniCloud）
@@ -229,7 +253,7 @@ function createMockUniCloud(options) {
       const targets = this._matched()
       for (const doc of targets) {
         const record = tableOf(this._name).get(doc._id)
-        Object.assign(record, clone(patch))
+        applyPatch(record, patch)
         record._id = doc._id
       }
       log.updates.push({ table: this._name, where: clone(this._cond), patch: clone(patch), count: targets.length })
@@ -276,7 +300,7 @@ function createMockUniCloud(options) {
             log.order.push({ type: 'update', table: name })
             return { updated: 0 }
           }
-          Object.assign(record, clone(patch))
+          applyPatch(record, patch)
           record._id = targetId
           log.updates.push({ table: name, id: targetId, patch: clone(patch), count: 1 })
           log.order.push({ type: 'update', table: name })
@@ -296,7 +320,11 @@ function createMockUniCloud(options) {
     in: value => ({ __op: 'in', value: clone(value) }),
     nin: value => ({ __op: 'nin', value: clone(value) }),
     or: value => ({ __op: 'or', value: clone(value) }),
-    and: value => ({ __op: 'and', value: clone(value) })
+    and: value => ({ __op: 'and', value: clone(value) }),
+    /** 更新指令：整体设置字段值（对象字段不会被展开成点号路径） */
+    set: value => ({ __op: 'set', value: clone(value) }),
+    /** 更新指令：删除字段 */
+    remove: () => ({ __op: 'remove' })
   }
 
   const database = () => ({
