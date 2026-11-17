@@ -105,10 +105,14 @@ const TOUCH_SLOP = 8
  * @param {() => Array} getItems 读取当前列表
  * @param {(next: Array) => void} setItems 写回重排后的列表
  * @param {(items: Array) => void|Promise<void>} onCommit 松手时回调最终顺序
- * @returns {{draggingId: object, startDrag: Function}}
+ * @returns {{draggingId: object, startDrag: Function, shouldIgnoreClick: Function}}
  */
 export function useImageDragSort(getItems, setItems, onCommit) {
   const draggingId = ref('')
+  /** 真实拖动结束后，短时间内忽略 click（松手浏览器仍可能派发 click，避免误触预览） */
+  let suppressClickUntil = 0
+  /** click 抑制窗口（ms）：覆盖松手到 click 派发的间隔，过期自动失效不误吞下次点击 */
+  const CLICK_SUPPRESS_MS = 400
   let dragIndex = -1
   /** 手势进行中（已按下、未松手） */
   let active = false
@@ -212,6 +216,16 @@ export function useImageDragSort(getItems, setItems, onCommit) {
   }
 
   /** 放弃本次手势（滚动 / 系统取消），不写库 */
+  /**
+   * 本次手势是否刚刚完成过真实拖动（拖动排序松手后浏览器仍可能补发一次 click）。
+   * 卡片点击预览用它判断：返回 true 就跳过，避免拖完顺手弹出预览。
+   * 用时间窗口而非一次性布尔：触屏拖动往往根本不派发 click，若一次性标志没被
+   * click 消费就会残留、误吞下一次正常点击；时间窗过期自动失效更稳。
+   */
+  function shouldIgnoreClick() {
+    return Date.now() < suppressClickUntil
+  }
+
   function cancel() {
     if (!active) return
     active = false
@@ -228,6 +242,8 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     draggingId.value = ''
     detach()
     if (!wasArmed) return
+    // 真实拖动松手：抑制紧随其后的 click（若有），不误开预览
+    suppressClickUntil = Date.now() + CLICK_SUPPRESS_MS
     const items = Array.isArray(getItems()) ? getItems().slice() : []
     Promise.resolve(onCommit(items)).catch(() => {})
   }
@@ -298,7 +314,7 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     }
   }
 
-  return { draggingId, startDrag }
+  return { draggingId, startDrag, shouldIgnoreClick }
 }
 
 export default { useImageDragSort }

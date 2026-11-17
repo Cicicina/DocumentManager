@@ -15,6 +15,7 @@
           :title="imageTitle(item)"
           @touchstart="startDrag($event, item, index)"
           @pointerdown="startDrag($event, item, index)"
+          @click="previewImage(item)"
         >
           <image
             v-if="imageUrls[item.file_id]"
@@ -26,7 +27,12 @@
             <uni-icons type="image" size="18" color="var(--mm-text-weak)" />
           </view>
           <text v-if="item.ref_count > 0" class="mm-image-space__refs">{{ item.ref_count }} 引用</text>
-          <view class="mm-image-space__remove" @pointerdown.stop="noop" @click="removeImage(item)">
+          <view
+            class="mm-image-space__remove"
+            @pointerdown.stop="noop"
+            @touchstart.stop="noop"
+            @click.stop="removeImage(item)"
+          >
             <uni-icons type="trash" size="12" color="var(--mm-text)" />
           </view>
           <text class="mm-image-space__size">{{ formatSize(item.size) }} · {{ item.uploader_nickname || '访客' }}</text>
@@ -60,7 +66,7 @@ const imageLoading = ref(false)
  * 拖动排序：order 越大越靠前，松手后按「数组长度 - 下标」重新编号，
  * 既保持当前可见顺序，又能让新上传的图（服务端取 max+1）继续排在最前。
  */
-const { draggingId, startDrag } = useImageDragSort(
+const { draggingId, startDrag, shouldIgnoreClick } = useImageDragSort(
   () => imageList.value,
   next => { imageList.value = next },
   async (items) => {
@@ -92,6 +98,23 @@ async function loadImages() {
     }
   }
   imageLoading.value = false
+}
+
+/**
+ * 点击图片预览：手势松手后浏览器可能补发 click，若刚完成拖动排序则跳过，
+ * 避免拖完顺手弹出预览。用全部已换到临时 URL 的图构造预览列表，定位到当前这张。
+ */
+function previewImage(item) {
+  if (!item || shouldIgnoreClick()) return
+  const current = imageUrls.value[item.file_id]
+  if (!current) return
+  const urls = imageList.value
+    .map(x => imageUrls.value[x.file_id])
+    .filter(Boolean)
+  uni.previewImage({
+    current,
+    urls: urls.length > 0 ? urls : [current]
+  })
 }
 
 /** 图片卡片的悬浮提示：上传者 + 上传日期 */
