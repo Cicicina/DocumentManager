@@ -116,6 +116,23 @@ function createPageDeps(options) {
     genUuid: () => 'uuid',
     setStoredTheme: () => {},
     getMmText: () => null,
+    getCommentParagraph: () => ({
+      extractAnnotatedParagraph: (text, start, end) => {
+        if (typeof text !== 'string' || typeof start !== 'number' || typeof end !== 'number' ||
+            start < 0 || end <= start || start >= text.length) return null
+        const paraStart = text.lastIndexOf('\n', start - 1) + 1
+        const nextBreak = text.indexOf('\n', end)
+        const paraEnd = nextBreak === -1 ? text.length : nextBreak
+        return {
+          paragraph: text.slice(paraStart, paraEnd),
+          before: text.slice(paraStart, start),
+          selected: text.slice(start, end),
+          after: text.slice(end, paraEnd),
+          selectedStart: start - paraStart,
+          selectedEnd: end - paraStart
+        }
+      }
+    }),
     downloadMarkdown: () => {},
     uploadCloudFile: async () => ({ fileID: 'cloud://mock/x.md' }),
     // 业务 API 替身

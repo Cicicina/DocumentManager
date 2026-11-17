@@ -56,7 +56,7 @@
         </template>
 
         <!-- 自定义上传 -->
-        <template v-else>
+        <template v-else-if="activeTab === 'custom'">
           <view class="mm-icon-picker__custom">
             <image v-if="customPreview" class="mm-icon-picker__preview" :src="customPreview" mode="aspectFit" />
             <wd-button size="small" plain @click="chooseCustom">上传自定义图标</wd-button>
@@ -64,6 +64,25 @@
           <view class="mm-icon-picker__item mm-icon-picker__none" :class="{ 'is-active': !draft }" @click="selectNone">
             <uni-icons type="closeempty" size="16" color="var(--mm-text-weak)" />
             <text>不使用图标</text>
+          </view>
+        </template>
+
+        <!-- 更多图标：搜索并跳转 iconfont -->
+        <template v-else-if="activeTab === 'more'">
+          <view class="mm-icon-picker__more">
+            <view class="mm-icon-picker__more-tip">
+              更多图标可前往 <text class="mm-icon-picker__link" @click="openIconfontHome">iconfont.cn</text> 搜索，找到后可自行下载使用
+            </view>
+            <wd-input
+              v-model="iconfontKeyword"
+              placeholder="输入关键词，如：文件夹、文档"
+              clearable
+              @confirm="openIconfontSearch"
+            />
+            <view class="mm-icon-picker__more-actions">
+              <wd-button size="small" type="primary" @click="openIconfontSearch">搜索图标</wd-button>
+              <wd-button size="small" plain @click="openIconfontHome">打开首页</wd-button>
+            </view>
           </view>
         </template>
       </scroll-view>
@@ -88,6 +107,7 @@ import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
 import { uploadCloudFile } from '@/common/utils/upload.js'
 import { WOT_ICON_GROUPS, WOT_ICON_NAMES } from '@/common/utils/wot-icons.js'
+import { buildIconfontUrl, openExternalLink, ICONFONT_HOME } from '@/common/utils/external-link.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -101,9 +121,12 @@ const store = useAppStore()
 const tabs = [
   { key: 'preset', label: '内置图标' },
   { key: 'wot', label: `Wot 图标（${WOT_ICON_NAMES.length}）` },
-  { key: 'custom', label: '自定义上传' }
+  { key: 'custom', label: '自定义上传' },
+  { key: 'more', label: '更多图标' }
 ]
 const activeTab = ref('preset')
+/** iconfont 搜索关键词 */
+const iconfontKeyword = ref('')
 
 /** 内置 SVG 图标 key，与 static/icons 下文件名一致 */
 const presetKeys = [
@@ -182,6 +205,14 @@ function chooseCustom() {
       }
     }
   })
+}
+
+function openIconfontSearch() {
+  openExternalLink(buildIconfontUrl(iconfontKeyword.value), 'iconfont 图标搜索')
+}
+
+function openIconfontHome() {
+  openExternalLink(ICONFONT_HOME, 'iconfont 图标库')
 }
 
 function close() {
@@ -289,6 +320,33 @@ function confirm() {
   flex-direction: row;
   font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
+}
+
+.mm-icon-picker__more {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--mm-ui-scale, 1));
+}
+
+.mm-icon-picker__more-tip {
+  font-size: calc(12px * var(--mm-ui-scale, 1));
+  line-height: 1.6;
+  color: var(--mm-text-weak);
+}
+
+.mm-icon-picker__link {
+  color: var(--mm-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.mm-icon-picker__more-actions {
+  display: flex;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+}
+
+.mm-icon-picker__more :deep(.wd-input) {
+  width: 100%;
 }
 
 .mm-icon-picker__actions {

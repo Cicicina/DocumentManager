@@ -136,12 +136,21 @@
       这里必须展示每条批注的全文（气泡与侧栏都会截断），
       否则用户点了「查看全部」却仍只看到省略号。
     -->
-    <wd-popup v-model="allCommentsVisible" position="center" custom-style="width:min(520px,92vw);border-radius:12px;">
+    <wd-popup v-model="allCommentsVisible" position="center" custom-style="width:min(560px,92vw);border-radius:12px;">
       <view class="mm-dialog">
-        <text class="mm-dialog__title">全部批注（{{ store.state.comments.length }}）</text>
-        <view v-if="!store.state.comments.length" class="mm-all-comments__empty">还没有批注</view>
-        <view v-for="item in store.state.comments" :key="item._id" class="mm-comment-card">
-          <text class="mm-comment-card__quote">{{ item.selected_text }}</text>
+        <text class="mm-dialog__title">批注详情（{{ commentsWithParagraph.length }}）</text>
+        <view v-if="!commentsWithParagraph.length" class="mm-all-comments__empty">还没有批注</view>
+        <view
+          v-for="item in commentsWithParagraph"
+          :key="item._id"
+          class="mm-comment-card"
+          :class="{ 'is-active': item._id === activeCommentId }"
+        >
+          <view class="mm-comment-card__para">
+            <text class="mm-comment-card__quote">{{ paragraphOf(item) ? paragraphOf(item).before : '' }}</text>
+            <text class="mm-comment-card__hit">{{ paragraphOf(item) ? paragraphOf(item).selected : item.selected_text }}</text>
+            <text class="mm-comment-card__quote">{{ paragraphOf(item) ? paragraphOf(item).after : '' }}</text>
+          </view>
           <text class="mm-comment-card__text">{{ item.comment }}</text>
           <text class="mm-comment-card__meta">
             {{ formatCommentTime(item.created_at) }}
@@ -277,7 +286,7 @@
                 :active-comment-id="activeCommentId"
                 :image-url-map="imageUrlMap"
                 @select-comment="handleCommentClick"
-                @view-all-comments="allCommentsVisible = true"
+                @view-all-comments="handleViewAllComments"
               />
               <mm-md-editor
                 v-else
@@ -514,6 +523,9 @@ import { ANONYMOUS_USER_ID, CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
 import { setStoredTheme } from '@/common/utils/theme.js'
 import { getMmText } from '@/common/utils/selection.js'
+// 副作用导入：把批注段落提取函数挂到 globalThis.CommentParagraph。
+// 注意：该文件采用同构双挂载、没有 export，不能写成命名导入，否则模块加载失败。
+import '@/common/utils/comment-paragraph.js'
 import { downloadMarkdown } from '@/common/utils/download.js'
 // 分享与剪贴板工具按需动态导入：既有登录态运行时探针只注入固定依赖，
 // 顶层新增 import 会破坏其装载契约；动态 import 不影响真实 H5 构建。
@@ -706,6 +718,31 @@ const currentChildFolders = computed(() => {
 const plainText = computed(() => {
   if (!mmText) return ''
   return mmText.stripMarkdown(store.state.editorContent)
+})
+
+/**
+ * 批注 + 标记段落：按 start/end offset 从 plainText 里取出批注所在的完整段落，
+ * 拆成 before / selected / after 三段，弹出层里对选中片段高亮。
+ * orphaned 或 offset 失效时 _para 为 null，模板回退只显示 selected_text。
+ */
+const commentsWithParagraph = computed(() => {
+  // 副作用导入把纯函数挂在 globalThis.CommentParagraph；测试/SSR 下可能未挂载，
+  // 此时跳过段落提取、_para 为 null，模板回退只显示 selected_text，不影响主流程。
+  const helper = (typeof globalThis !== 'undefined' && globalThis.CommentParagraph) || {}
+  const extractAnnotatedParagraph = helper.extractAnnotatedParagraph
+  const text = plainText.value || ''
+  return (store.state.comments || []).map(item => {
+    let para = null
+    if (typeof extractAnnotatedParagraph === 'function' && item &&
+        typeof item.start_offset === 'number' && typeof item.end_offset === 'number') {
+      try {
+        para = extractAnnotatedParagraph(text, item.start_offset, item.end_offset)
+      } catch (error) {
+        para = null
+      }
+    }
+    return { ...item, _para: para }
+  })
 })
 
 /**
@@ -1938,6 +1975,22 @@ function handleCommentClick(payload) {
   commentDetailVisible.value = true
 }
 
+/**
+ * 点批注气泡上的「查看全部」：打开批注详情弹层。
+ * 携带了具体批注时定位到那一条并高亮，未携带则展示列表第一条。
+ * 弹层里每条都显示「标记段落（含选中高亮）/ 完整批注内容 / 批注时间」。
+ */
+function handleViewAllComments(comment) {
+  if (comment && comment._id) activeCommentId.value = comment._id
+  allCommentsVisible.value = true
+}
+
+/** 取某条批注的段落三段式，供弹层高亮渲染；失效时返回 null */
+function paragraphOf(comment) {
+  if (!comment || !comment._para) return null
+  return comment._para
+}
+
 /** 气泡与列表统一截断规则 */
 function truncateBubble(text) {
   const value = typeof text === 'string' ? text : ''
@@ -2577,15 +2630,33 @@ for (const item of POPUPS) {
   background-color: var(--mm-surface-2);
 }
 
-.mm-comment-card__quote {
-  display: block;
+/* 「查看全部」携带的具体那条批注：边框高亮，便于一眼定位 */
+.mm-comment-card.is-active {
+  border-color: var(--mm-accent);
+}
+
+/* 标记段落：左侧强调线 + 三段式流式排版（选中片段高亮） */
+.mm-comment-card__para {
   margin-bottom: calc(6px * var(--mm-ui-scale, 1));
   padding-left: calc(8px * var(--mm-ui-scale, 1));
   font-size: calc(11px * var(--mm-ui-scale, 1));
   line-height: 1.6;
   color: var(--mm-text-weak);
   border-left: 2px solid var(--mm-accent);
+}
+
+.mm-comment-card__quote {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mm-comment-card__hit {
+  color: var(--mm-accent);
+  font-weight: 600;
+  background-color: var(--mm-mark);
+  border-radius: 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .mm-comment-card__text {
