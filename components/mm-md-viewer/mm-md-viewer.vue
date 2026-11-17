@@ -37,7 +37,7 @@ const props = defineProps({
   imageUrlMap: { type: Object, default: () => ({}) }
 })
 
-const emit = defineEmits(['select-comment'])
+const emit = defineEmits(['select-comment', 'view-all-comments'])
 
 const contentRef = ref(null)
 
@@ -200,9 +200,13 @@ watch(() => [props.comments, props.activeCommentId], () => {
 function handleClick(event) {
   const target = event && event.target
   if (!target || typeof target.closest !== 'function') return
-  // 气泡与高亮文字都能打开同一条批注详情
+  // 高亮文字 / 气泡正文 → 单条详情；「查看全部」→ 全部批注列表
   const hit = target.closest('mark.mm-anchor') || target.closest('.mm-chip')
   if (!hit) return
+  if (target.closest('.mm-chip__more')) {
+    emit('view-all-comments')
+    return
+  }
   const commentId = hit.getAttribute('data-comment-id')
   const comment = (props.comments || []).find(item => item && item._id === commentId)
   if (!comment) return

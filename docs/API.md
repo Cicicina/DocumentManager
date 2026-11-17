@@ -127,7 +127,23 @@
 
 ---
 
-## 6. 统一错误码
+## 6. `mm-share` — 只读分享（5 个方法）
+
+| 方法 | 入参 | 出参 `data` | 权限 | 主要错误码 |
+| --- | --- | --- | --- | --- |
+| `create` | `{ file_id, expire_seconds }` | `{ token, expire_at, infinite, file_id }`；`expire_seconds: 0` 表示无限期（落远期哨兵，不写 `null`） | 写（文档所有者） | 1001 / 1002 / 1003 / 4009 / 4010 |
+| `verify` | `{ token }` | `{ valid, file_id, expire_at, infinite, doc_name }` | 免登录 | 4007 / 4008 / 4010 |
+| `open` | `{ token }` | `{ file_id, doc, content, tempUrl, source, error, expire_at, infinite }`，只读快照 | 登录 | 4007 / 4008 / 4010 |
+| `list` | `{ page?, page_size?, all? }` | `{ items, total, page, page_size }`；每项含 `status`（active/expired/revoked）、`doc_name`、`infinite`、`access_count` | 读（默认只看自己的，`all` 仅管理员） | 1002 |
+| `revoke` | `{ share_id?, token? }` | `{ share_id, revoked }`；作废后链接立即失效，不可恢复 | 写（创建者或管理员） | 1001 / 1002 / 1003 / 1004 |
+
+- 无限期不是 `expire_at: null`（`mm-shares.expire_at` 是必填 timestamp），而是远期哨兵时间；客户端通过 `infinite` 字段判断展示「永久有效」。
+- 分享链接形如 `.../#/pages/index/index?share_token=<token>`；首次进入解析成功后用 `history.replaceState` 抹掉 token，只跳一次。
+- 分享管理入口在设置页，可复制链接与提前作废。
+
+---
+
+## 7. 统一错误码
 
 | code | 常量 | 含义 | 前端处理 |
 | --- | --- | --- | --- |
@@ -159,7 +175,7 @@
 
 ---
 
-## 7. 前端调用示例
+## 8. 前端调用示例
 
 ```js
 import { saveContent } from '@/common/api/mm-file.js'

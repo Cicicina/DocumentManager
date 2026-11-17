@@ -285,13 +285,92 @@ test('第7项 create：非所有者无写权限 → 1003；有效期越界 → 1
   }, { token: other })
   assert.equal(forbidden.errCode, 1003, '非所有者不得创建分享')
 
-  for (const bad of [299, 2592001, -1, 0, 'abc']) {
+  for (const bad of [299, 2592001, -1, 'abc']) {
     const res = await callObject(mmShare, 'create', {
       file_id: doc._id, expire_seconds: bad
     }, { token: owner })
     assert.equal(res.errCode, 1001, `有效期 ${bad} 应被拒绝`)
   }
   assert.equal(mock.__rows('mm-shares').length, 0, '校验失败不得写入分享记录')
+})
+
+test('无限期分享：expire_seconds=0 落远期哨兵，verify/open 永不判过期', async () => {
+  const mock = createShareEnv()
+  const doc = seedShareDoc(mock)
+  const mmShare = loadCloudObject('mm-share', mock)
+  const token = uniIdStub.__login('token-u1', 'u1')
+
+  const created = await callObject(mmShare, 'create', {
+    file_id: doc._id, expire_seconds: 0
+  }, { token })
+  assert.equal(created.errCode, 0, created.errMsg)
+  assert.equal(created.data.infinite, true, '应标记为无限期')
+  assert.ok(created.data.expire_at > Date.now() + 365 * 10 * 86400 * 1000, '到期时间应为远未来哨兵')
+
+  const verified = await callObject(mmShare, 'verify', { token: created.data.token })
+  assert.equal(verified.errCode, 0, verified.errMsg)
+  assert.equal(verified.data.infinite, true)
+
+  const opened = await callObject(mmShare, 'open', { token: created.data.token }, { token })
+  assert.equal(opened.errCode, 0, opened.errMsg)
+  assert.equal(opened.data.infinite, true)
+})
+
+test('分享管理 list：只看自己的分享，状态与文档名正确', async () => {
+  const mock = createShareEnv()
+  const doc = seedShareDoc(mock)
+  seedShare(mock, {
+    token: 'ValidToken1234567890',
+    doc_id: doc._id,
+    creator_uid: 'u1',
+    expire_at: new Date(Date.now() + 3600 * 1000)
+  })
+  seedShare(mock, {
+    token: 'RevokedToken1234567',
+    doc_id: doc._id,
+    creator_uid: 'u1',
+    revoked: true
+  })
+  seedShare(mock, {
+    token: 'ExpiredToken1234567',
+    doc_id: doc._id,
+    creator_uid: 'u1',
+    expire_at: new Date(Date.now() - 1000)
+  })
+  seedShare(mock, {
+    token: 'OtherUserToken12345',
+    doc_id: doc._id,
+    creator_uid: 'u2'
+  })
+  const mmShare = loadCloudObject('mm-share', mock)
+  const token = uniIdStub.__login('token-u1', 'u1')
+
+  const res = await callObject(mmShare, 'list', { page: 1, page_size: 10 }, { token })
+  assert.equal(res.errCode, 0, res.errMsg)
+  assert.equal(res.data.total, 3, '只能看到自己创建的分享')
+  const byToken = Object.fromEntries(res.data.items.map(item => [item.token, item]))
+  assert.equal(byToken.ValidToken1234567890.status, 'active')
+  assert.equal(byToken.ValidToken1234567890.doc_name, 'doc1.md')
+  assert.equal(byToken.RevokedToken1234567.status, 'revoked')
+  assert.equal(byToken.ExpiredToken1234567.status, 'expired')
+})
+
+test('分享管理 revoke：所有者可作废，他人不可；作废后 verify 失效', async () => {
+  const mock = createShareEnv()
+  const doc = seedShareDoc(mock)
+  const share = seedShare(mock, { token: 'ValidToken1234567890', doc_id: doc._id })
+  const mmShare = loadCloudObject('mm-share', mock)
+  const owner = uniIdStub.__login('token-u1', 'u1')
+
+  const other = uniIdStub.__login('token-u2', 'u2')
+  const denied = await callObject(mmShare, 'revoke', { share_id: share._id }, { token: other })
+  assert.equal(denied.errCode, 1003, '非所有者不得作废他人分享')
+
+  const ok = await callObject(mmShare, 'revoke', { share_id: share._id }, { token: owner })
+  assert.equal(ok.errCode, 0, ok.errMsg)
+  assert.equal(ok.data.revoked, true)
+  const verified = await callObject(mmShare, 'verify', { token: 'ValidToken1234567890' })
+  assert.equal(verified.errCode, 4007, '作废后链接必须立即失效')
 })
 
 test('第7项 create：令牌碰撞时重生，连续碰撞超过上限报 4009', async () => {

@@ -11,7 +11,12 @@
  * 两种进入拖动的方式，避免和页面滚动打架：
  * - 鼠标：按下后移动超过 4px 即开始拖（点击不会误触发）。
  * - 触屏：长按 300ms 才开始拖；在此之前手指移动超过 8px 视为滚动，直接放弃。
- *   真正拖动时给元素临时加 touch-action: none，交给 pointermove 全权处理。
+ *
+ * 触屏的关键点：touch-action 在 pointerdown 那一刻就被浏览器锁定，
+ * 300ms 后再改 dragEl.style.touchAction 已经晚了——手指一移浏览器就接管滚动并
+ * 发 pointercancel，拖动永远起不来。所以进入拖动后必须在 document 上挂一个
+ * { passive: false } 的 touchmove，主动 preventDefault 阻止滚动接管。
+ * 同时禁掉长按弹出的系统菜单 / 文字选择（iOS 尤其明显）。
  */
 import { ref } from 'vue'
 
@@ -41,6 +46,23 @@ export function useImageDragSort(getItems, setItems, onCommit) {
   let holdTimer = null
   let currentItem = null
   let lastTouchAction = ''
+  let touchActive = false
+
+  /**
+   * 触屏拖动期间阻止浏览器滚动接管。
+   * 必须挂成 passive:false，否则 preventDefault 不生效；
+   * 只在真正 arm 之后调用，长按计时器未到时仍允许正常滚动。
+   */
+  function handleTouchMove(event) {
+    if (!touchActive || !armed) return
+    if (event.cancelable) event.preventDefault()
+  }
+
+  /** 长按会触发系统菜单 / 文字选择，弹出来后 pointercancel 会打断拖动 */
+  function handleContextMenu(event) {
+    if (!active) return
+    if (event.cancelable) event.preventDefault()
+  }
 
   /** 由屏幕坐标反查落点卡片的下标，找不到返回 -1 */
   function indexFromPoint(x, y) {
@@ -107,8 +129,11 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     document.removeEventListener('pointermove', handleMove)
     document.removeEventListener('pointerup', handleUp)
     document.removeEventListener('pointercancel', cancel)
+    document.removeEventListener('touchmove', handleTouchMove, { passive: false })
+    if (dragEl && dragEl.removeEventListener) dragEl.removeEventListener('contextmenu', handleContextMenu)
     if (dragEl && dragEl.style) dragEl.style.touchAction = lastTouchAction
     dragEl = null
+    touchActive = false
   }
 
   /** 放弃本次手势（滚动 / 系统取消），不写库 */
@@ -159,6 +184,12 @@ export function useImageDragSort(getItems, setItems, onCommit) {
       document.addEventListener('pointermove', handleMove)
       document.addEventListener('pointerup', handleUp)
       document.addEventListener('pointercancel', cancel)
+      if (event.pointerType === 'touch') {
+        touchActive = true
+        // passive:false 才能 preventDefault；否则浏览器照常滚动并发出 pointercancel
+        document.addEventListener('touchmove', handleTouchMove, { passive: false })
+        if (dragEl && dragEl.addEventListener) dragEl.addEventListener('contextmenu', handleContextMenu)
+      }
     }
   }
 

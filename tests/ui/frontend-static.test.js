@@ -368,13 +368,13 @@ function apiDocMethods() {
   return result
 }
 
-test('docs/API.md 的方法名与 5 个云对象实际导出逐个一致', () => {
+test('docs/API.md 的方法名与 6 个云对象实际导出逐个一致', () => {
   const mock = createMockUniCloud()
   const documented = apiDocMethods()
-  const objects = ['mm-file', 'mm-comment', 'mm-search', 'mm-settings', 'mm-image']
+  const objects = ['mm-file', 'mm-comment', 'mm-search', 'mm-settings', 'mm-image', 'mm-share']
 
   assert.deepEqual(Object.keys(documented).sort(), objects.slice().sort(),
-    'API.md 应覆盖全部 5 个云对象章节')
+    'API.md 应覆盖全部 6 个云对象章节')
 
   for (const name of objects) {
     const exported = Object.keys(loadCloudObject(name, mock)).filter(key => key !== '_before').sort()
@@ -387,6 +387,7 @@ test('docs/API.md 的方法名与 5 个云对象实际导出逐个一致', () =>
   assert.equal(documented['mm-comment'].length, 5, 'mm-comment 应有 5 个方法')
   assert.equal(documented['mm-settings'].length, 7, 'mm-settings 应有 7 个方法')
   assert.equal(documented['mm-image'].length, 6, 'mm-image 应有 6 个方法')
+  assert.equal(documented['mm-share'].length, 5, 'mm-share 应有 5 个方法')
 })
 
 test('docs/API.md 错误码表与 common/constants.js 的 ERR 完全一致', async () => {

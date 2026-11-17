@@ -8,6 +8,8 @@
         </view>
       </view>
 
+      <text class="mm-image-picker__tip">按住图片拖动可调整顺序，越靠前越优先插入文档</text>
+
       <view class="mm-image-picker__toolbar">
         <wd-button size="small" type="primary" plain @click="chooseNew">上传新图片</wd-button>
       </view>
@@ -198,6 +200,14 @@ function close() {
   color: var(--mm-text);
 }
 
+.mm-image-picker__tip {
+  flex: none;
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  font-size: calc(11px * var(--mm-ui-scale, 1));
+  line-height: 1.5;
+  color: var(--mm-text-weak);
+}
+
 .mm-image-picker__close {
   padding: calc(4px * var(--mm-ui-scale, 1));
   cursor: pointer;
@@ -239,6 +249,7 @@ function close() {
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .mm-image-picker__item:hover {

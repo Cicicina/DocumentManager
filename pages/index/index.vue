@@ -131,6 +131,29 @@
       </view>
     </wd-popup>
 
+    <!--
+      全部批注：点正文气泡上的「查看全部」打开。
+      这里必须展示每条批注的全文（气泡与侧栏都会截断），
+      否则用户点了「查看全部」却仍只看到省略号。
+    -->
+    <wd-popup v-model="allCommentsVisible" position="center" custom-style="width:min(520px,92vw);border-radius:12px;">
+      <view class="mm-dialog">
+        <text class="mm-dialog__title">全部批注（{{ store.state.comments.length }}）</text>
+        <view v-if="!store.state.comments.length" class="mm-all-comments__empty">还没有批注</view>
+        <view v-for="item in store.state.comments" :key="item._id" class="mm-comment-card">
+          <text class="mm-comment-card__quote">{{ item.selected_text }}</text>
+          <text class="mm-comment-card__text">{{ item.comment }}</text>
+          <text class="mm-comment-card__meta">
+            {{ formatCommentTime(item.created_at) }}
+            <text v-if="store.state.config.account_enabled !== false"> · {{ item.nickname || '访客' }}</text>
+          </text>
+        </view>
+        <view class="mm-dialog__actions">
+          <wd-button size="small" type="primary" @click="allCommentsVisible = false">关闭</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
     <!-- 主体 -->
     <view class="mm-body">
       <!-- PC 左栏：目录树 -->
@@ -151,7 +174,7 @@
           @change-icon-root="handleChangeIconRoot"
         />
         <view class="mm-pane__foot">
-          <view class="mm-pane__link" @click="trashVisible = true">
+          <view class="mm-pane__link mm-pane__link--inset" @click="trashVisible = true">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
             <text>回收站</text>
           </view>
@@ -187,7 +210,7 @@
               <view class="mm-mode__spacer" />
               <!-- 大纲开关：与阅读 / 编辑同一行，默认关闭 -->
               <view
-                class="mm-mode__action"
+                class="mm-mode__action mm-mode__action--outline"
                 :class="{ 'is-active': outlineVisible }"
                 :title="outlineVisible ? '隐藏大纲' : '显示大纲'"
                 :aria-label="outlineVisible ? '隐藏大纲' : '显示大纲'"
@@ -195,6 +218,17 @@
               >
                 <uni-icons type="list" size="15" color="var(--mm-text-weak)" />
                 <text class="mm-mode__action-label">大纲</text>
+              </view>
+              <!-- 分享：紧挨大纲；分享打开的只读文档不允许再分享 -->
+              <view
+                v-if="!shareReadOnly"
+                class="mm-mode__action"
+                title="分享文档"
+                aria-label="分享文档"
+                @click="handleShare(store.state.currentFile)"
+              >
+                <uni-icons type="redo" size="15" color="var(--mm-text-weak)" />
+                <text class="mm-mode__action-label">分享</text>
               </view>
               <view
                 v-if="mode === 'edit' && !shareReadOnly"
@@ -217,9 +251,9 @@
                 <uni-icons type="eye" size="15" color="var(--mm-text-weak)" />
                 <text class="mm-mode__action-label">预览</text>
               </view>
-              <!-- 没有批注时不显示入口，避免点开一个空列表 -->
+              <!-- 批注列表只在阅读视图有意义；编辑视图不显示该入口 -->
               <view
-                v-if="store.state.comments.length"
+                v-if="mode === 'read' && store.state.comments.length"
                 class="mm-mode__action"
                 :class="{ 'is-active': annotationVisible }"
                 :title="annotationVisible ? '隐藏批注列表' : '显示批注列表'"
@@ -241,6 +275,7 @@
                 :active-comment-id="activeCommentId"
                 :image-url-map="imageUrlMap"
                 @select-comment="handleCommentClick"
+                @view-all-comments="allCommentsVisible = true"
               />
               <mm-md-editor
                 v-else
@@ -308,7 +343,7 @@
             @rename-root="handleRenameRoot"
             @change-icon-root="handleChangeIconRoot"
           />
-          <view class="mm-pane__link" @click="drawerVisible = false; trashVisible = true">
+          <view class="mm-pane__link mm-pane__link--inset" @click="drawerVisible = false; trashVisible = true">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
             <text>回收站</text>
           </view>
@@ -416,10 +451,11 @@
       @select="handleImageSelect"
     />
 
-    <!-- 分享：选择有效期档位 -->
+    <!-- 分享：选择有效期档位（含无限期） -->
     <wd-popup v-model="shareVisible" position="center" custom-style="width:min(380px,88vw);border-radius:12px;">
       <view class="mm-dialog">
         <text class="mm-dialog__title">分享文档</text>
+        <text class="mm-share__sub">{{ shareTargetName || '当前文档' }}</text>
         <view class="mm-share__options">
           <view
             v-for="option in shareOptions"
@@ -429,6 +465,7 @@
             @click="shareExpire = option.value"
           >{{ option.label }}</view>
         </view>
+        <text class="mm-share__tip">{{ shareExpire === 0 ? '无限期分享不会自动失效，可在设置的「分享管理」里随时作废。' : '到期后链接自动失效，也可在设置的「分享管理」里提前作废。' }}</text>
         <view class="mm-dialog__actions">
           <wd-button size="small" plain @click="shareVisible = false">取消</wd-button>
           <wd-button size="small" type="primary" :disabled="shareCreating" @click="confirmShare">创建并复制</wd-button>
@@ -538,22 +575,34 @@ const hasActiveSelection = ref(false)
 /** 单条批注详情弹层 */
 const commentDetailVisible = ref(false)
 const commentDetail = ref({})
+/** 点气泡「查看全部」打开的全文列表 */
+const allCommentsVisible = ref(false)
 /** 新建批注输入弹层 */
 const commentDialogVisible = ref(false)
 const commentDialogText = ref('')
 /** 分享只读标记：通过分享链接打开的文档不允许编辑 */
 const shareReadOnly = ref(false)
 
-/** 分享有效期档位与弹层状态 */
+/**
+ * 分享有效期档位。
+ * value 是秒数，0 表示无限期（服务端用远期哨兵时间表示，不落 null）。
+ */
 const shareOptions = [
   { label: '1 小时', value: 3600 },
   { label: '1 天', value: 86400 },
-  { label: '7 天', value: 604800 }
+  { label: '7 天', value: 604800 },
+  { label: '30 天', value: 2592000 },
+  { label: '无限期', value: 0 }
 ]
 const shareVisible = ref(false)
 const shareTarget = ref(null)
 const shareExpire = ref(86400)
 const shareCreating = ref(false)
+/** 弹层里显示的文档名，避免只写「当前文档」让人不确定分享的是谁 */
+const shareTargetName = computed(() => {
+  const target = shareTarget.value
+  return target && target.name ? target.name : ''
+})
 
 /** 待处理分享令牌：onLoad query + storage 双保险 */
 const pendingShareToken = ref('')
@@ -625,10 +674,15 @@ const isDarkTheme = computed(() => {
   return false
 })
 
-/** 主题图标：静态 SVG，不依赖图标字体 */
-const themeIcon = computed(() =>
-  isDarkTheme.value ? '/static/icons/theme-moon.svg' : '/static/icons/theme-sun.svg'
-)
+/**
+ * 主题图标：静态 SVG，不依赖图标字体。
+ * 「自动」必须用独立图标 —— 跟随系统时若复用 sun/moon，
+ * 用户会误以为当前就是「浅色」或「深色」，分不清是哪种模式。
+ */
+const themeIcon = computed(() => {
+  if (store.state.theme === 'auto') return '/static/icons/theme-auto.svg'
+  return isDarkTheme.value ? '/static/icons/theme-moon.svg' : '/static/icons/theme-sun.svg'
+})
 
 /**
  * 账号功能是否开启。
@@ -703,6 +757,24 @@ const outlineVisible = ref(false)
 
 function toggleOutline() {
   outlineVisible.value = !outlineVisible.value
+}
+
+/**
+ * 点击大纲以外的区域收起大纲。
+ * 大纲是贴在正文右侧的浮层，没有遮罩层（加遮罩会挡住正文滚动），
+ * 所以用 document 级 pointerdown 判断落点。
+ * 排除大纲自身与工具栏上的大纲开关：点开关交给 toggleOutline，
+ * 否则会「关掉又被自己打开」。
+ * @param {object} event 原生 pointerdown 事件
+ * @returns {void}
+ */
+function handleOutlineOutside(event) {
+  if (!outlineVisible.value) return
+  const target = event && event.target
+  if (!target || typeof target.closest !== 'function') return
+  if (target.closest('.mm-outline')) return
+  if (target.closest('.mm-mode__action--outline')) return
+  outlineVisible.value = false
 }
 
 /** 大纲跳转：阅读态滚到第 index 个标题，编辑态把光标定位到对应行 */
@@ -857,6 +929,7 @@ onMounted(() => {
   if (typeof document !== 'undefined') {
     document.addEventListener('selectionchange', captureShellSelection)
     document.addEventListener('scroll', handleContentScroll, true)
+    document.addEventListener('pointerdown', handleOutlineOutside, true)
   }
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', measureScroll)
@@ -871,6 +944,7 @@ onUnmounted(() => {
   if (typeof document !== 'undefined') {
     document.removeEventListener('selectionchange', captureShellSelection)
     document.removeEventListener('scroll', handleContentScroll, true)
+    document.removeEventListener('pointerdown', handleOutlineOutside, true)
   }
   if (shellSelectionTimer) {
     clearTimeout(shellSelectionTimer)
@@ -903,7 +977,9 @@ watch(() => store.state.editorContent, () => {
 
 // 切到编辑态就没有「正文选区」这个概念了，浮动添加批注按钮必须收起；
 // 滚动容器同时换人（阅读器 → CodeMirror），滚动按钮状态要重新量一次。
+// 视图切换必须先把所有浮层关掉：编辑态下还挂着阅读态打开的批注详情/大纲会很怪。
 watch(mode, () => {
+  closeAllPopups()
   hasActiveSelection.value = false
   scrollHost = null
   activeOutlineIndex.value = -1
@@ -2268,6 +2344,60 @@ function cancelInput() {
     inputResolve = null
   }
 }
+
+// ---------------- 浮层互斥 ----------------
+/**
+ * 页面同一时刻只允许一个浮层可见。
+ *
+ * 大纲、批注列表严格说是一个侧栏，但在用户视角里同属「打开了一个东西」，
+ * 所以和居中弹窗一起纳入互斥：点开大纲时，正在显示的批注列表要让位。
+ *
+ * 冲突弹窗（conflictVisible）刻意排除在外——它是必须处理的中断，
+ * 不能被其它浮层顺手关掉，否则用户的保存冲突就无处确认了。
+ *
+ * 每项都自带 close：通用输入弹层靠 Promise 把结果回给调用方，
+ * 直接置 false 会让等待方永远挂着，必须走 cancelInput。
+ */
+const POPUPS = [
+  { name: 'drawer', flag: drawerVisible },
+  { name: 'outline', flag: outlineVisible },
+  { name: 'annotation', flag: annotationVisible },
+  { name: 'commentDetail', flag: commentDetailVisible },
+  { name: 'allComments', flag: allCommentsVisible },
+  { name: 'commentDialog', flag: commentDialogVisible },
+  { name: 'share', flag: shareVisible },
+  { name: 'search', flag: searchVisible },
+  { name: 'trash', flag: trashVisible },
+  { name: 'imagePicker', flag: imagePickerVisible },
+  { name: 'iconPicker', flag: iconPickerVisible },
+  { name: 'move', flag: moveVisible },
+  { name: 'input', flag: inputVisible, close: cancelInput }
+]
+
+/**
+ * 关闭除 keep 之外的所有浮层。
+ * @param {string} [keep] 需要保留的浮层名
+ * @returns {void}
+ */
+function closePopupsExcept(keep) {
+  for (const item of POPUPS) {
+    if (item.name === keep) continue
+    if (!item.flag || !item.flag.value) continue
+    if (typeof item.close === 'function') item.close()
+    else item.flag.value = false
+  }
+}
+
+/** 关闭全部浮层：切换阅读 / 编辑视图时调用 */
+function closeAllPopups() {
+  closePopupsExcept('')
+}
+
+for (const item of POPUPS) {
+  watch(item.flag, (value) => {
+    if (value) closePopupsExcept(item.name)
+  })
+}
 </script>
 
 <style scoped>
@@ -2433,15 +2563,61 @@ function cancelInput() {
   color: var(--mm-text-weak);
 }
 
+/* 全部批注：每条都展示原文与全文，不截断 */
+.mm-all-comments__empty {
+  padding: calc(28px * var(--mm-ui-scale, 1)) 0;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
+  color: var(--mm-text-weak);
+  text-align: center;
+}
+
+.mm-comment-card {
+  padding: calc(10px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
+  margin-bottom: calc(8px * var(--mm-ui-scale, 1));
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  background-color: var(--mm-surface-2);
+}
+
+.mm-comment-card__quote {
+  display: block;
+  margin-bottom: calc(6px * var(--mm-ui-scale, 1));
+  padding-left: calc(8px * var(--mm-ui-scale, 1));
+  font-size: calc(11px * var(--mm-ui-scale, 1));
+  line-height: 1.6;
+  color: var(--mm-text-weak);
+  border-left: 2px solid var(--mm-accent);
+  white-space: pre-wrap;
+}
+
+.mm-comment-card__text {
+  display: block;
+  font-size: calc(13px * var(--mm-ui-scale, 1));
+  line-height: 1.7;
+  color: var(--mm-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mm-comment-card__meta {
+  display: block;
+  margin-top: calc(6px * var(--mm-ui-scale, 1));
+  font-size: calc(11px * var(--mm-ui-scale, 1));
+  color: var(--mm-text-weak);
+}
+
 /* 分享有效期档位 */
 .mm-share__options {
   display: flex;
+  /* 5 个档位（含无限期）在窄屏放不下一行，允许折行 */
+  flex-wrap: wrap;
   gap: calc(8px * var(--mm-ui-scale, 1));
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .mm-share__option {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: calc(64px * var(--mm-ui-scale, 1));
   padding: calc(8px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
   font-size: calc(12px * var(--mm-ui-scale, 1));
   text-align: center;
@@ -2455,6 +2631,25 @@ function cancelInput() {
   color: var(--mm-accent);
   border-color: var(--mm-accent);
   background-color: var(--mm-accent-weak);
+}
+
+/* 分享对象名与说明，避免用户不确定分享的是哪篇、多久失效 */
+.mm-share__sub {
+  display: block;
+  margin-bottom: 10px;
+  font-size: calc(12px * var(--mm-ui-scale, 1));
+  color: var(--mm-text-weak);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mm-share__tip {
+  display: block;
+  margin-bottom: 4px;
+  font-size: calc(11px * var(--mm-ui-scale, 1));
+  line-height: 1.6;
+  color: var(--mm-text-weak);
 }
 
 /* 主体三栏 */
@@ -2606,7 +2801,8 @@ function cancelInput() {
 
 .mm-pane__foot {
   flex: none;
-  padding: calc(8px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
+  /* 左内边距留给 .mm-pane__link--inset 统一控制，才能与目录树图标严格对齐 */
+  padding: calc(8px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1)) 0;
   border-top: 1px solid var(--mm-border);
 }
 
@@ -2618,6 +2814,15 @@ function cancelInput() {
   font-size: calc(12px * var(--mm-ui-scale, 1));
   color: var(--mm-text-weak);
   cursor: pointer;
+}
+
+/*
+ * 与目录树「全部文档」图标左对齐。
+ * 树行的图标起点 = 6px 行内边距 + 14px（固定）展开箭头 + 4px 间距，
+ * 前两者随 --mm-ui-scale 缩放，箭头是固定像素，所以这里要拆开算。
+ */
+.mm-pane__link--inset {
+  padding-left: calc(10px * var(--mm-ui-scale, 1) + 14px);
 }
 
 /* 阅读 / 编辑切换：允许换行，窄屏不再靠挤压或隐藏文字塞进一行 */
@@ -2749,6 +2954,13 @@ function cancelInput() {
 /* 通用输入弹层 */
 .mm-dialog {
   padding: calc(18px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
+  /*
+   * 必须限高并允许内部滚动：批注详情里的原文与批注都可能很长，
+   * 弹层按内容自然撑高会被视口裁掉，用户就「看不到全部批注内容」。
+   */
+  max-height: 82vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .mm-dialog__title {
