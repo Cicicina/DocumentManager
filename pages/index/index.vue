@@ -644,6 +644,24 @@ const plainText = computed(() => {
 })
 
 /**
+ * 去掉标题里的行内 Markdown 标记，用于大纲展示与标题比对。
+ * 与渲染后 DOM 的 textContent 保持等价（`**重点**` → `重点`，链接只留文字）。
+ * 注意：不能无脑删掉所有 `_`，`snake_case` 这类标识符要保留。
+ */
+function stripInlineMarkdown(value) {
+  return String(value || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]*>/g, '')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(\*|_)([^*_]+)\1/g, '$2')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/`+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * 大纲条目：从 markdown 原文按 ATX 标题（# ~ ######）解析，跳过围栏代码块。
  * index 是「第几个标题」的全局序号，阅读态按 data-mm-h 命中，
  * 编辑态按 line 定位 CodeMirror 行。
@@ -670,7 +688,7 @@ const outlineItems = computed(() => {
     if (inFence) continue
     const heading = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(text)
     if (!heading) continue
-    const title = heading[2].replace(/\s+#+\s*$/, '').trim()
+    const title = stripInlineMarkdown(heading[2].replace(/\s+#+\s*$/, ''))
     if (!title) continue
     items.push({ level: heading[1].length, text: title, line, index: items.length })
   }
@@ -697,7 +715,7 @@ function handleOutlineSelect(item) {
     return
   }
   const viewer = viewerRef.value
-  if (viewer && typeof viewer.scrollToHeading === 'function') viewer.scrollToHeading(item.index)
+  if (viewer && typeof viewer.scrollToHeading === 'function') viewer.scrollToHeading(item.index, item.text)
 }
 
 /** 编辑器受控内容代理：读写都落到 store.editorContent */

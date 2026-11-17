@@ -7,8 +7,20 @@
  *
  * 不用 HTML5 draggable：uni-app 的 <view> 不是原生可拖元素，且触屏端不生效。
  * 这里靠 elementFromPoint 找落点，鼠标与手指走同一套逻辑。
+ *
+ * 两种进入拖动的方式，避免和页面滚动打架：
+ * - 鼠标：按下后移动超过 4px 即开始拖（点击不会误触发）。
+ * - 触屏：长按 300ms 才开始拖；在此之前手指移动超过 8px 视为滚动，直接放弃。
+ *   真正拖动时给元素临时加 touch-action: none，交给 pointermove 全权处理。
  */
 import { ref } from 'vue'
+
+/** 鼠标判定为「开始拖动」的位移阈值（px） */
+const MOUSE_THRESHOLD = 4
+/** 触屏长按多久进入拖动（ms） */
+const TOUCH_HOLD_MS = 300
+/** 触屏在长按生效前允许的抖动位移（px），超过即认为是滚动 */
+const TOUCH_SLOP = 8
 
 /**
  * @param {() => Array} getItems 读取当前列表
@@ -19,9 +31,16 @@ import { ref } from 'vue'
 export function useImageDragSort(getItems, setItems, onCommit) {
   const draggingId = ref('')
   let dragIndex = -1
+  /** 手势进行中（已按下、未松手） */
   let active = false
-  /** 是否真的移动过：单纯点击卡片不能触发一次无意义的写库 */
-  let hasMoved = false
+  /** 已真正进入拖动状态（决定是否写库） */
+  let armed = false
+  let dragEl = null
+  let originX = 0
+  let originY = 0
+  let holdTimer = null
+  let currentItem = null
+  let lastTouchAction = ''
 
   /** 由屏幕坐标反查落点卡片的下标，找不到返回 -1 */
   function indexFromPoint(x, y) {
@@ -34,8 +53,44 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     return Number.isFinite(index) ? index : -1
   }
 
+  function clearHold() {
+    if (holdTimer) {
+      clearTimeout(holdTimer)
+      holdTimer = null
+    }
+  }
+
+  /** 进入拖动状态：锁定该元素的触摸手势，并点亮 is-dragging */
+  function arm() {
+    if (armed || !active) return
+    armed = true
+    draggingId.value = (currentItem && (currentItem._id || currentItem.file_id)) || ''
+    if (dragEl && dragEl.style) {
+      lastTouchAction = dragEl.style.touchAction || ''
+      dragEl.style.touchAction = 'none'
+    }
+  }
+
   function handleMove(event) {
     if (!active) return
+    const dx = Math.abs(event.clientX - originX)
+    const dy = Math.abs(event.clientY - originY)
+
+    if (!armed) {
+      // 触屏：长按计时器未到就已经移动 → 判定为滚动，放弃本次拖动
+      if (event.pointerType === 'touch') {
+        if (dx > TOUCH_SLOP || dy > TOUCH_SLOP) cancel()
+        return
+      }
+      // 鼠标：越过阈值才开始拖
+      if (dx < MOUSE_THRESHOLD && dy < MOUSE_THRESHOLD) return
+      clearHold()
+      arm()
+      if (!armed) return
+    }
+
+    if (event.cancelable) event.preventDefault()
+
     const target = indexFromPoint(event.clientX, event.clientY)
     if (target < 0 || target === dragIndex) return
     const items = Array.isArray(getItems()) ? getItems().slice() : []
@@ -43,24 +98,36 @@ export function useImageDragSort(getItems, setItems, onCommit) {
     const [movedItem] = items.splice(dragIndex, 1)
     items.splice(target, 0, movedItem)
     dragIndex = target
-    hasMoved = true
     setItems(items)
   }
 
   function detach() {
+    clearHold()
     if (typeof document === 'undefined') return
     document.removeEventListener('pointermove', handleMove)
     document.removeEventListener('pointerup', handleUp)
-    document.removeEventListener('pointercancel', handleUp)
+    document.removeEventListener('pointercancel', cancel)
+    if (dragEl && dragEl.style) dragEl.style.touchAction = lastTouchAction
+    dragEl = null
+  }
+
+  /** 放弃本次手势（滚动 / 系统取消），不写库 */
+  function cancel() {
+    if (!active) return
+    active = false
+    armed = false
+    draggingId.value = ''
+    detach()
   }
 
   function handleUp() {
     if (!active) return
+    const wasArmed = armed
     active = false
+    armed = false
     draggingId.value = ''
     detach()
-    if (!hasMoved) return
-    hasMoved = false
+    if (!wasArmed) return
     const items = Array.isArray(getItems()) ? getItems().slice() : []
     Promise.resolve(onCommit(items)).catch(() => {})
   }
@@ -75,13 +142,23 @@ export function useImageDragSort(getItems, setItems, onCommit) {
   function startDrag(event, item, index) {
     if (!item || !Number.isFinite(index)) return
     active = true
-    hasMoved = false
+    armed = false
     dragIndex = index
-    draggingId.value = item._id || item.file_id || ''
+    currentItem = item
+    originX = event.clientX || 0
+    originY = event.clientY || 0
+    dragEl = event.currentTarget || event.target || null
+    clearHold()
+    if (event.pointerType === 'touch') {
+      holdTimer = setTimeout(() => {
+        holdTimer = null
+        arm()
+      }, TOUCH_HOLD_MS)
+    }
     if (typeof document !== 'undefined') {
       document.addEventListener('pointermove', handleMove)
       document.addEventListener('pointerup', handleUp)
-      document.addEventListener('pointercancel', handleUp)
+      document.addEventListener('pointercancel', cancel)
     }
   }
 

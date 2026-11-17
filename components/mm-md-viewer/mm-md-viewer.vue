@@ -219,11 +219,39 @@ function scrollToOffset(offset) {
   if (el) scrollPlainOffset(el, offset)
 }
 
-/** 滚动到第 index 个标题（大纲跳转），序号与 markdown 解析顺序一致 */
-function scrollToHeading(index) {
+/**
+ * 标题文本归一：只抹平空白差异。
+ * 传进来的 text 已由调用方去掉行内标记，这里必须保持「轻量」，
+ * 否则会二次删掉 `snake_case` 里的下划线，反而和 DOM 文本对不上。
+ */
+function normalizeHeadingText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * 滚动到第 index 个标题。
+ *
+ * 索引来自前端对 Markdown 源文的 ATX 解析，与 marked 渲染出的 h1~h6 顺序
+ * 理论上一致；但 setext 标题（=== / --- 下划线）、HTML 块内标题等会让两边错位。
+ * 所以带上标题文本做二次校验：索引对不上时按文本回查，仍然找不到才放弃。
+ *
+ * @param {number} index 标题序号
+ * @param {string} [text] 标题文本，用于纠偏
+ */
+function scrollToHeading(index, text) {
   const el = resolveContentEl()
   if (!el || typeof el.querySelector !== 'function') return
-  const target = el.querySelector(`[data-mm-h="${Number(index)}"]`)
+  const label = normalizeHeadingText(text)
+  let target = el.querySelector(`[data-mm-h="${Number(index)}"]`)
+  if (label && (!target || normalizeHeadingText(target.textContent) !== label)) {
+    const candidates = el.querySelectorAll('h1,h2,h3,h4,h5,h6')
+    for (let i = 0; i < candidates.length; i++) {
+      if (normalizeHeadingText(candidates[i].textContent) === label) {
+        target = candidates[i]
+        break
+      }
+    }
+  }
   if (!target || typeof target.scrollIntoView !== 'function') return
   target.scrollIntoView({ block: 'start', behavior: 'smooth' })
 }

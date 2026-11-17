@@ -237,6 +237,8 @@ function close() {
   overflow: hidden;
   background-color: var(--mm-surface-2);
   cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .mm-image-picker__item:hover {
