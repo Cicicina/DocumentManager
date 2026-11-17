@@ -1,0 +1,9 @@
+{
+  "name": "mm-comment",
+  "version": "1.0.0",
+  "description": "MarkdownManager 批注云对象：批注增删改查、R3 锚点 4004 二次校验、四级重定位",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}

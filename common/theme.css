@@ -1,0 +1,213 @@
+/**
+ * MarkdownManager 全站主题基线（中文注释）。
+ *
+ * 浅色：暖白底 + 深墨正文；深色：中性深灰底 + 柔白正文。强调色单一克制，
+ * 只用于选中态、链接与批注锚点。变量与 uni.scss 中追加的 $mm-* 取值对齐。
+ *
+ * 自动跟随系统 prefers-color-scheme；页面可通过 html[data-theme="light|dark"]
+ * 手动覆盖（common/utils/theme.js 负责写入该属性，P1 R25）。
+ *
+ * 约定：业务组件与页面一律使用 var(--mm-*) 取色，不硬编码颜色值。
+ */
+
+:root {
+  --mm-bg: #FAF9F6;
+  --mm-surface: #FFFFFF;
+  --mm-surface-2: #F2F0EB;
+  --mm-text: #1E2126;
+  --mm-text-weak: #6B7078;
+  --mm-border: #E6E3DC;
+  --mm-accent: #3A6EA5;
+  --mm-accent-weak: #E8F0F9;
+  --mm-mark: #FFE9A8;
+  --mm-success: #2E9E5B;
+  --mm-shadow: 0 2px 12px rgba(30, 33, 38, .06);
+  --mm-radius: 10px;
+  /* 字号档位基准：common/utils/font.js 写入 html[data-font] 后按档位覆盖 */
+  --mm-font-scale: 1;
+}
+
+/* 字号五档：极大 / 大 / 中（默认） / 小 / 极小。正文用 em 相对单位，自动跟随 */
+html[data-font="xl"] { --mm-font-scale: 1.25; }
+html[data-font="lg"] { --mm-font-scale: 1.125; }
+html[data-font="md"] { --mm-font-scale: 1; }
+html[data-font="sm"] { --mm-font-scale: 0.9375; }
+html[data-font="xs"] { --mm-font-scale: 0.875; }
+
+/* 跟随系统深色偏好；手动指定浅色时让位给下面的显式规则 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mm-bg: #1C1D1F;
+    --mm-surface: #242628;
+    --mm-surface-2: #2C2E31;
+    --mm-text: #EDEDF0;
+    --mm-text-weak: #9AA0A8;
+    --mm-border: #383A3E;
+    --mm-accent: #7FA9D8;
+    --mm-accent-weak: #2A3A4C;
+    --mm-mark: #6B5A22;
+    --mm-success: #4CC784;
+    --mm-shadow: 0 2px 12px rgba(0, 0, 0, .30);
+    --mm-radius: 10px;
+    --mm-font-scale: 1;
+  }
+}
+
+/* 手动覆盖：浅色 */
+html[data-theme="light"] {
+  --mm-bg: #FAF9F6;
+  --mm-surface: #FFFFFF;
+  --mm-surface-2: #F2F0EB;
+  --mm-text: #1E2126;
+  --mm-text-weak: #6B7078;
+  --mm-border: #E6E3DC;
+  --mm-accent: #3A6EA5;
+  --mm-accent-weak: #E8F0F9;
+  --mm-mark: #FFE9A8;
+  --mm-success: #2E9E5B;
+  --mm-shadow: 0 2px 12px rgba(30, 33, 38, .06);
+  --mm-radius: 10px;
+  --mm-font-scale: 1;
+}
+
+/* 手动覆盖：深色 */
+html[data-theme="dark"] {
+  --mm-bg: #1C1D1F;
+  --mm-surface: #242628;
+  --mm-surface-2: #2C2E31;
+  --mm-text: #EDEDF0;
+  --mm-text-weak: #9AA0A8;
+  --mm-border: #383A3E;
+  --mm-accent: #7FA9D8;
+  --mm-accent-weak: #2A3A4C;
+  --mm-mark: #6B5A22;
+  --mm-success: #4CC784;
+  --mm-shadow: 0 2px 12px rgba(0, 0, 0, .30);
+  --mm-radius: 10px;
+  --mm-font-scale: 1;
+}
+
+/* 全站底色与文字 */
+html,
+body {
+  background-color: var(--mm-bg);
+  color: var(--mm-text);
+}
+
+/* 主题切换过渡克制，避免首屏闪烁 */
+html,
+body,
+.mm-surface {
+  transition: background-color .2s ease, color .2s ease;
+}
+
+/* 通用面板：轻微层次阴影 + 统一圆角 */
+.mm-surface {
+  background-color: var(--mm-surface);
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius);
+  box-shadow: var(--mm-shadow);
+}
+
+/* 选中态与链接 */
+.mm-selected {
+  background-color: var(--mm-accent-weak);
+  color: var(--mm-accent);
+}
+
+.mm-link {
+  color: var(--mm-accent);
+}
+
+/* ---------------- Markdown 阅读区样式层级 ---------------- */
+.mm-md {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+  color: var(--mm-text);
+  line-height: 1.8;
+  font-size: 16px;
+  word-wrap: break-word;
+}
+
+.mm-md h1,
+.mm-md h2,
+.mm-md h3,
+.mm-md h4,
+.mm-md h5,
+.mm-md h6 {
+  margin: 1.6em 0 .6em;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--mm-text);
+}
+
+.mm-md h1 { font-size: 1.9em; }
+.mm-md h2 { font-size: 1.55em; border-bottom: 1px solid var(--mm-border); padding-bottom: .3em; }
+.mm-md h3 { font-size: 1.3em; }
+.mm-md h4 { font-size: 1.12em; }
+.mm-md h5 { font-size: 1em; }
+.mm-md h6 { font-size: .92em; color: var(--mm-text-weak); }
+
+.mm-md p { margin: .8em 0; }
+
+.mm-md ul,
+.mm-md ol { margin: .8em 0; padding-left: 1.6em; }
+.mm-md li { margin: .3em 0; }
+
+.mm-md blockquote {
+  margin: 1em 0;
+  padding: .4em 1em;
+  border-left: 3px solid var(--mm-accent);
+  background-color: var(--mm-surface-2);
+  color: var(--mm-text-weak);
+  border-radius: 0 var(--mm-radius) var(--mm-radius) 0;
+}
+
+.mm-md pre {
+  margin: 1.2em 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background-color: var(--mm-surface-2);
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius);
+  line-height: 1.6;
+}
+
+.mm-md code {
+  padding: .12em .36em;
+  background-color: var(--mm-surface-2);
+  border-radius: 4px;
+  font-size: .9em;
+}
+
+.mm-md pre code { padding: 0; background: transparent; }
+
+.mm-md table {
+  width: 100%;
+  margin: 1.2em 0;
+  border-collapse: collapse;
+}
+
+.mm-md th,
+.mm-md td {
+  padding: 8px 12px;
+  border: 1px solid var(--mm-border);
+  text-align: left;
+}
+
+.mm-md th { background-color: var(--mm-surface-2); font-weight: 600; }
+
+.mm-md img { max-width: 100%; border-radius: var(--mm-radius); }
+.mm-md a { color: var(--mm-accent); text-decoration: none; }
+.mm-md a:hover { text-decoration: underline; }
+.mm-md hr { border: none; border-top: 1px solid var(--mm-border); margin: 2em 0; }
+
+/* 批注锚点高亮与搜索命中高亮 */
+.mm-md mark,
+.mm-anchor-mark {
+  background-color: var(--mm-mark);
+  color: var(--mm-text);
+  border-radius: 3px;
+  padding: 0 2px;
+}

@@ -1,0 +1,49 @@
+{
+  "bsonType": "object",
+  "required": ["user_id", "role", "can_read", "can_write", "created_at", "updated_at"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "记录 ID，系统自动生成"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "关联 uni-id-users._id（唯一索引）"
+    },
+    "role": {
+      "bsonType": "string",
+      "description": "admin 管理员 / user 普通用户",
+      "enum": ["admin", "user"],
+      "defaultValue": "user"
+    },
+    "can_read": {
+      "bsonType": "bool",
+      "description": "可读",
+      "defaultValue": true
+    },
+    "can_write": {
+      "bsonType": "bool",
+      "description": "可写；权限关闭时服务端忽略本表，默认全部可读可写",
+      "defaultValue": true
+    },
+    "created_at": {
+      "bsonType": "timestamp",
+      "description": "服务器时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "updated_at": {
+      "bsonType": "timestamp",
+      "description": "服务器时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

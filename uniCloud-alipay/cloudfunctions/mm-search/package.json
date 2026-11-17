@@ -1,0 +1,9 @@
+{
+  "name": "mm-search",
+  "version": "1.0.0",
+  "description": "MarkdownManager 搜索云对象：标签 / 文件名 / 批注 / 正文四维搜索",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}

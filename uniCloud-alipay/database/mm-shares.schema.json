@@ -1,0 +1,45 @@
+{
+  "bsonType": "object",
+  "required": ["token", "doc_id", "creator_uid", "expire_at", "created_at"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "token": {
+      "bsonType": "string",
+      "description": "分享令牌，base64url 随机串，全局唯一"
+    },
+    "doc_id": {
+      "bsonType": "string",
+      "description": "被分享文档 _id"
+    },
+    "creator_uid": {
+      "bsonType": "string",
+      "description": "创建者 uid"
+    },
+    "expire_at": {
+      "bsonType": "timestamp",
+      "description": "到期时间（毫秒时间戳对应的日期）"
+    },
+    "created_at": {
+      "bsonType": "timestamp",
+      "description": "创建时间，服务端写入，不可修改",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "revoked": {
+      "bsonType": "bool",
+      "description": "是否已撤销",
+      "defaultValue": false
+    },
+    "access_count": {
+      "bsonType": "int",
+      "description": "打开次数",
+      "defaultValue": 0
+    }
+  }
+}

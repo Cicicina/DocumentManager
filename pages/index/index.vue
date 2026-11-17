@@ -1,0 +1,2571 @@
+<template>
+  <view class="mm-app">
+    <!-- 首屏加载动画：store.ready 就绪后淡出 -->
+    <mm-loading :visible="!store.state.ready" :min-duration="300" />
+
+    <!-- 顶部工具栏 -->
+    <view class="mm-topbar">
+      <view class="mm-topbar__left">
+        <view v-if="isMobile" class="mm-topbar__icon-btn" @click="drawerVisible = true">
+          <uni-icons type="bars" size="18" color="var(--mm-text)" />
+        </view>
+        <text class="mm-topbar__title">{{ currentTitle }}</text>
+        <view
+          v-if="store.state.currentFile"
+          class="mm-topbar__status"
+          :class="'is-' + saveStatus"
+          :title="saveStatusText"
+          :aria-label="saveStatusText"
+        />
+      </view>
+      <view class="mm-topbar__right">
+        <view
+          v-if="isLoggedIn"
+          class="mm-topbar__icon-btn"
+          title="账号"
+          aria-label="账号"
+          @click="handleUserMenu"
+        >
+          <uni-icons type="person-filled" size="17" color="var(--mm-text)" />
+        </view>
+        <view
+          v-else-if="store.state.config.account_enabled !== false"
+          class="mm-topbar__icon-btn"
+          title="登录"
+          aria-label="登录"
+          @click="goLogin"
+        >
+          <wd-icon name="person" size="17px" color="var(--mm-text)" />
+        </view>
+        <view class="mm-topbar__icon-btn" title="搜索" aria-label="搜索" @click="searchVisible = true">
+          <uni-icons type="search" size="17" color="var(--mm-text)" />
+        </view>
+        <view
+          class="mm-topbar__icon-btn"
+          :title="themeLabel"
+          :aria-label="'主题：' + themeLabel"
+          @click="cycleTheme"
+        >
+          <wd-icon
+            :name="store.state.theme === 'dark' ? 'moon' : 'sunny'"
+            size="17px"
+            color="var(--mm-text)"
+          />
+        </view>
+        <view class="mm-topbar__icon-btn" title="设置" aria-label="设置" @click="goSettings">
+          <uni-icons type="gear" size="17" color="var(--mm-text)" />
+        </view>
+        <wd-button
+          v-if="!isMobile"
+          size="small"
+          type="primary"
+          :disabled="!store.state.currentFile || saveStatus === 'saving'"
+          @click="handleSave"
+        >保存</wd-button>
+      </view>
+    </view>
+
+    <!-- 手机端未保存时底部悬浮保存按钮：opacity 淡入淡出，仅 dirty 可见可点 -->
+    <view
+      v-if="isMobile"
+      class="mm-save-fab"
+      :class="{ 'is-visible': saveStatus === 'dirty' }"
+    >
+      <wd-button
+        size="small"
+        type="primary"
+        :disabled="saveStatus === 'saving'"
+        @click="handleSave"
+      >保存</wd-button>
+    </view>
+
+    <!-- 正文有活动选区时浮动「添加批注」，与底部保存按钮分区放置不重叠 -->
+    <view
+      class="mm-add-annotation-fab"
+      :class="{ 'is-visible': !!annotationSelection && !!store.state.currentFile }"
+      title="添加批注"
+      aria-label="添加批注"
+      @click="openShellComment"
+    >
+      <wd-button size="small" plain>添加批注</wd-button>
+    </view>
+
+    <!-- 被批注文字旁的气泡：渲染在阅读器外层，避免 overflow 裁切 -->
+    <view
+      v-if="commentBubble"
+      class="mm-comment-bubble"
+      :style="commentBubbleStyle"
+      @click="openAllComments"
+    >
+      <text class="mm-comment-bubble__text">{{ truncateBubble(commentBubble.comment) }}</text>
+      <text class="mm-comment-bubble__more">查看全部</text>
+    </view>
+
+    <!-- H5 剪贴板静默读失败时的显式入口与最终兜底输入框 -->
+    <view
+      v-if="clipboardReadFailed"
+      class="mm-clipboard-fab"
+      title="读取剪贴板"
+      aria-label="读取剪贴板"
+      @click="inspectClipboard"
+    >
+      <wd-button size="small" plain>读取剪贴板</wd-button>
+    </view>
+    <wd-popup
+      v-model="clipboardInputVisible"
+      position="center"
+      custom-style="width:min(420px,88vw);border-radius:12px;"
+    >
+      <view class="mm-dialog">
+        <text class="mm-dialog__title">粘贴内容</text>
+        <wd-input v-model="clipboardInputText" placeholder="在此粘贴剪贴板内容" />
+        <view class="mm-dialog__actions">
+          <wd-button size="small" plain @click="clipboardInputVisible = false">取消</wd-button>
+          <wd-button size="small" type="primary" @click="usePastedClipboard">确定</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 主体 -->
+    <view class="mm-body">
+      <!-- PC 左栏：目录树 -->
+      <view v-if="!isMobile" class="mm-pane mm-pane--tree">
+        <mm-folder-tree
+          :folders="store.state.tree"
+          :current-id="currentFolderId"
+          :loading="treeLoading"
+          @select="handleFolderSelect"
+          @create="handleCreateFolder"
+          @rename="handleRenameFolder"
+          @move="handleMoveFolder"
+          @remove="handleRemoveFolder"
+          @change-icon="handleChangeIcon"
+        />
+        <view class="mm-pane__foot">
+          <view class="mm-pane__link" @click="trashVisible = true">
+            <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
+            <text>回收站</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- PC 中栏：文件列表 -->
+      <view v-if="!isMobile" class="mm-pane mm-pane--list">
+        <mm-file-list
+          :files="store.state.files"
+          :loading="fileLoading"
+            @open="handleOpenFile"
+            @create-file="handleCreateFile"
+            @upload="handleUpload"
+            @import="handleImport"
+            @rename="handleRenameFile"
+            @move="handleMoveFile"
+            @export="handleExport"
+            @share="handleShare"
+            @batch-delete="handleBatchDelete"
+        />
+      </view>
+
+      <!-- 右栏：阅读 / 编辑 -->
+      <view class="mm-pane mm-pane--main" :class="{ 'is-split': !!store.state.currentFile && annotationVisible }">
+        <template v-if="store.state.currentFile">
+          <!-- 文档区独占一列：批注栏带 height:100% 且 flex-basis:auto，
+               若与本列同级上下排列会吃光高度，把 .mm-content 压成 0。 -->
+          <view class="mm-doc">
+            <view class="mm-mode">
+              <view class="mm-mode__item" :class="{ 'is-active': mode === 'read' }" @click="mode = 'read'">阅读</view>
+              <view v-if="!shareReadOnly" class="mm-mode__item" :class="{ 'is-active': mode === 'edit' }" @click="mode = 'edit'">编辑</view>
+              <view class="mm-mode__spacer" />
+              <view
+                v-if="mode === 'edit' && !shareReadOnly"
+                class="mm-mode__action"
+                title="插入图片"
+                aria-label="插入图片"
+                @click="imagePickerVisible = true"
+              >
+                <uni-icons type="image" size="15" color="var(--mm-text-weak)" />
+                <text class="mm-mode__action-label">插入图片</text>
+              </view>
+              <view
+                v-if="mode === 'edit' && !shareReadOnly"
+                class="mm-mode__action"
+                :class="{ 'is-active': editorPreview }"
+                title="预览"
+                aria-label="预览"
+                @click="toggleEditorPreview"
+              >
+                <uni-icons type="eye" size="15" color="var(--mm-text-weak)" />
+                <text class="mm-mode__action-label">预览</text>
+              </view>
+              <view
+                class="mm-mode__action"
+                :class="{ 'is-active': annotationVisible }"
+                :title="annotationVisible ? '隐藏批注列表' : '显示批注列表'"
+                :aria-label="annotationVisible ? '隐藏批注列表' : '显示批注列表'"
+                @click="annotationVisible = !annotationVisible"
+              >
+                <uni-icons type="chat" size="15" color="var(--mm-text-weak)" />
+                <text class="mm-mode__action-label">批注</text>
+              </view>
+            </view>
+
+            <view class="mm-content">
+              <mm-md-viewer
+                v-if="mode === 'read'"
+                ref="viewerRef"
+                :md-source="store.state.editorContent"
+                :plain-text="plainText"
+                :comments="store.state.comments"
+                :active-comment-id="activeCommentId"
+                :image-url-map="imageUrlMap"
+                @select-comment="handleCommentClick"
+              />
+              <mm-md-editor
+                v-else
+                ref="editorRef"
+                v-model="editorContentProxy"
+                :file-id="store.state.currentFile._id"
+                :image-url-map="imageUrlMap"
+                :show-preview="editorPreview"
+                :read-only="shareReadOnly"
+              />
+            </view>
+          </view>
+
+          <mm-annotation
+            v-if="annotationVisible"
+            class="mm-annotation-pane"
+            :comments="store.state.comments"
+            :plain-text="plainText"
+            :active-comment-id="activeCommentId"
+            @add="handleCreateComment"
+            @update="handleUpdateComment"
+            @remove="handleRemoveComment"
+            @locate="handleLocateComment"
+          />
+        </template>
+
+        <view v-else class="mm-empty" title="打开目录" aria-label="打开目录" @click="handleEmptyTap">
+          <text>从左侧选择一篇文档</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 移动端抽屉 -->
+    <wd-popup v-model="drawerVisible" position="left" custom-style="width:88vw;height:100%;">
+      <view class="mm-drawer">
+        <view class="mm-drawer__head">
+          <text class="mm-drawer__title">目录</text>
+          <view class="mm-drawer__close" @click="drawerVisible = false">
+            <uni-icons type="close" size="16" color="var(--mm-text-weak)" />
+          </view>
+        </view>
+        <view class="mm-drawer__tree">
+          <mm-folder-tree
+            :folders="store.state.tree"
+            :current-id="currentFolderId"
+            :loading="treeLoading"
+            @select="handleDrawerFolderSelect"
+            @create="handleCreateFolder"
+            @rename="handleRenameFolder"
+            @move="handleMoveFolder"
+            @remove="handleRemoveFolder"
+            @change-icon="handleChangeIcon"
+          />
+          <view class="mm-pane__link" @click="drawerVisible = false; trashVisible = true">
+            <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
+            <text>回收站</text>
+          </view>
+        </view>
+        <view class="mm-drawer__list">
+          <mm-file-list
+            :files="store.state.files"
+            :loading="fileLoading"
+            @open="handleDrawerOpenFile"
+            @create-file="handleCreateFile"
+            @upload="handleUpload"
+            @import="handleImport"
+            @rename="handleRenameFile"
+            @move="handleMoveFile"
+            @export="handleExport"
+            @share="handleShare"
+            @batch-delete="handleBatchDelete"
+          />
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 通用输入弹层：新建文件夹 / 重命名 -->
+    <wd-popup v-model="inputVisible" position="center" custom-style="width:min(360px,86vw);border-radius:12px;">
+      <view class="mm-dialog">
+        <text class="mm-dialog__title">{{ inputTitle }}</text>
+        <wd-input v-model="inputValue" :placeholder="inputPlaceholder" />
+        <view class="mm-dialog__actions">
+          <wd-button size="small" plain @click="cancelInput">取消</wd-button>
+          <wd-button size="small" type="primary" @click="confirmInput">确定</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 移动到：先浏览目录层级，再确认「移动到此处」；非法目标沿用置灰与原因 -->
+    <wd-popup v-model="moveVisible" position="center" custom-style="width:min(420px,90vw);border-radius:12px;">
+      <view class="mm-move">
+        <text class="mm-move__title">移动到</text>
+        <view class="mm-move__path">
+          <text class="mm-move__crumb" @click="moveToLevel('')">全部文档</text>
+          <template v-for="(crumb, index) in moveBreadcrumb" :key="crumb._id">
+            <text class="mm-move__sep">/</text>
+            <text
+              class="mm-move__crumb"
+              :class="{ 'is-active': index === moveBreadcrumb.length - 1 }"
+              @click="moveToLevel(crumb._id)"
+            >{{ crumb.name }}</text>
+          </template>
+          <view class="mm-move__spacer" />
+          <view v-if="moveBreadcrumb.length" class="mm-move__up" @click="moveUpOneLevel">
+            <uni-icons type="arrow-left" size="13" color="var(--mm-text-weak)" />
+            <text>返回上一级</text>
+          </view>
+        </view>
+        <scroll-view class="mm-move__body" scroll-y>
+          <view
+            class="mm-move__item"
+            :class="{ 'is-disabled': moveRootTarget.disabled, 'is-current': moveRootTarget.current }"
+            @click="moveToLevel('')"
+          >
+            <uni-icons type="folder-add" size="14" color="var(--mm-text-weak)" />
+            <text class="mm-move__name">全部文档</text>
+            <text v-if="moveRootTarget.reason" class="mm-move__reason">{{ moveRootTarget.reason }}</text>
+          </view>
+          <view
+            v-for="item in moveBrowseTargets"
+            :key="item._id"
+            class="mm-move__item"
+            :class="{ 'is-disabled': item.disabled, 'is-current': item.current }"
+            @click="browseMoveTarget(item)"
+          >
+            <uni-icons type="folder-add" size="14" color="var(--mm-text-weak)" />
+            <text class="mm-move__name">{{ item.name }}</text>
+            <text v-if="item.reason" class="mm-move__reason">{{ item.reason }}</text>
+            <uni-icons v-if="item.hasChildren" type="arrow-right" size="12" color="var(--mm-text-weak)" />
+          </view>
+        </scroll-view>
+        <view class="mm-move__actions">
+          <wd-button size="small" plain @click="moveVisible = false">取消</wd-button>
+          <wd-button size="small" type="primary" :disabled="moveHereDisabled" @click="confirmMoveHere">移动到此处</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 功能浮层 -->
+    <mm-icon-picker
+      v-model:visible="iconPickerVisible"
+      :current="iconPickerCurrent"
+      @confirm="handleIconConfirm"
+    />
+    <mm-search-panel v-model:visible="searchVisible" @select="handleSearchSelect" />
+    <mm-trash v-model:visible="trashVisible" @changed="handleTrashChanged" />
+    <mm-conflict-modal
+      v-model:visible="conflictVisible"
+      :cloud-version="conflict.cloudVersion"
+      :local-version="store.state.baseVersion"
+      :cloud-preview="conflict.cloudPreview"
+      :cloud-updated-at="conflict.cloudUpdatedAt"
+      @overwrite="handleConflictOverwrite"
+      @discard="handleConflictDiscard"
+    />
+    <mm-image-picker
+      v-model:visible="imagePickerVisible"
+      :uid="store.state.user.uid"
+      @select="handleImageSelect"
+    />
+
+    <!-- 分享：选择有效期档位 -->
+    <wd-popup v-model="shareVisible" position="center" custom-style="width:min(380px,88vw);border-radius:12px;">
+      <view class="mm-dialog">
+        <text class="mm-dialog__title">分享文档</text>
+        <view class="mm-share__options">
+          <view
+            v-for="option in shareOptions"
+            :key="option.value"
+            class="mm-share__option"
+            :class="{ 'is-active': shareExpire === option.value }"
+            @click="shareExpire = option.value"
+          >{{ option.label }}</view>
+        </view>
+        <view class="mm-dialog__actions">
+          <wd-button size="small" plain @click="shareVisible = false">取消</wd-button>
+          <wd-button size="small" type="primary" :disabled="shareCreating" @click="confirmShare">创建并复制</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 浮动批注按钮触发的新建输入 -->
+    <wd-popup v-model="commentDialogVisible" position="center" custom-style="width:min(420px,88vw);border-radius:12px;">
+      <view class="mm-dialog">
+        <text class="mm-dialog__title">添加批注</text>
+        <text v-if="annotationSelection" class="mm-dialog__quote">{{ truncateBubble(annotationSelection.selectedText) }}</text>
+        <wd-input v-model="commentDialogText" placeholder="写下你的批注" />
+        <view class="mm-dialog__actions">
+          <wd-button size="small" plain @click="commentDialogVisible = false">取消</wd-button>
+          <wd-button size="small" type="primary" @click="submitShellComment">确定</wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <!-- 查看全部批注 -->
+    <wd-popup v-model="allCommentsVisible" position="bottom" custom-style="height:70vh;width:100%;left:0;right:0;border-radius:12px 12px 0 0;">
+      <view class="mm-comments-all">
+        <view class="mm-comments-all__head">
+          <text>全部批注</text>
+          <view class="mm-comments-all__close" aria-label="关闭" @click="allCommentsVisible = false">
+            <uni-icons type="closeempty" size="18" color="var(--mm-text-weak)" />
+          </view>
+        </view>
+        <scroll-view class="mm-comments-all__body" scroll-y>
+          <view
+            v-for="item in store.state.comments"
+            :key="item._id"
+            class="mm-comments-all__item"
+            @click="locateCommentFromList(item)"
+          >
+            <text class="mm-comments-all__quote">{{ truncateBubble(item.selected_text) }}</text>
+            <text class="mm-comments-all__text">{{ item.comment }}</text>
+            <view class="mm-comments-all__meta">
+              <text>{{ formatCommentTime(item.created_at) }}</text>
+              <text v-if="store.state.config.account_enabled && item.nickname">{{ item.nickname }}</text>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+    </wd-popup>
+
+    <!-- 轻提示挂载点（必需） -->
+    <wd-toast />
+  </view>
+</template>
+
+<script setup>
+/**
+ * 应用主壳：首屏加载 → 登录守卫 → PC 三栏 / 移动单栏抽屉，
+ * 承担目录树、文件列表、阅读编辑、搜索、回收站、冲突弹窗的全链路接线。
+ *
+ * 红线：
+ * - 版本冲突（code=2001）不弹 Toast、不跳转、不清空 store.editorContent；
+ * - 所有云对象调用集中在 common/api，不出现客户端直连数据库；
+ * - 布局尺寸一律 px / rem，禁止 rpx。
+ */
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { useToast } from 'wot-design-uni'
+import { useAppStore } from '@/common/store/index.js'
+import { ANONYMOUS_USER_ID, CLOUD_PATH } from '@/common/constants.js'
+import { genUuid } from '@/common/utils/uuid.js'
+import { setStoredTheme } from '@/common/utils/theme.js'
+import { getMmText } from '@/common/utils/selection.js'
+import { downloadMarkdown } from '@/common/utils/download.js'
+// 分享与剪贴板工具按需动态导入：既有登录态运行时探针只注入固定依赖，
+// 顶层新增 import 会破坏其装载契约；动态 import 不影响真实 H5 构建。
+import { uploadCloudFile } from '@/common/utils/upload.js'
+import {
+  listTree,
+  listFiles,
+  createFolder,
+  registerUpload,
+  importFile,
+  getContent,
+  saveContent,
+  rename,
+  move,
+  updateIcon,
+  softDelete,
+  exportFile
+} from '@/common/api/mm-file.js'
+import {
+  listByFile,
+  add as addComment,
+  update as updateComment,
+  remove as removeComment
+} from '@/common/api/mm-comment.js'
+import { getTempUrls, syncRefs } from '@/common/api/mm-image.js'
+import {
+  isTokenInvalid,
+  isLocalTokenExpired,
+  handleLoginExpired,
+  resetLoginGuard
+} from '@/common/api/index.js'
+
+const store = useAppStore()
+const toast = useToast()
+
+/**
+ * 本页是否已完成一次登录态判定 / 失效引导。
+ * watch(ready) 与 onShow 都会触发守卫，此标记保证同一失效只引导一次，
+ * 不再反复 loadIdentity + bootstrap 造成提示与请求抖动。
+ */
+let loginGuardDone = false
+
+/** 同构提纯函数单例（由 selection.js 副作用导入完成挂载） */
+const mmText = getMmText()
+
+// ---------------- 视图状态 ----------------
+const isMobile = ref(false)
+const mode = ref('read')
+/** 编辑态是否显示右侧实时预览分栏；仅编辑模式生效，切换阅读/编辑不重置用户选择 */
+const editorPreview = ref(true)
+const drawerVisible = ref(false)
+
+/** 批注列表是否展开；默认收起，避开批注组件 height:100% 把正文压成 0 的历史坑 */
+const annotationVisible = ref(false)
+/** 主壳缓存的正文活动选区，供浮动「添加批注」按钮使用 */
+const annotationSelection = ref(null)
+/** 批注气泡 + 输入弹层 + 全部批注弹窗 */
+const commentBubble = ref(null)
+const commentDialogVisible = ref(false)
+const commentDialogText = ref('')
+const allCommentsVisible = ref(false)
+/** 分享只读标记：通过分享链接打开的文档不允许编辑 */
+const shareReadOnly = ref(false)
+
+/** 分享有效期档位与弹层状态 */
+const shareOptions = [
+  { label: '1 小时', value: 3600 },
+  { label: '1 天', value: 86400 },
+  { label: '7 天', value: 604800 }
+]
+const shareVisible = ref(false)
+const shareTarget = ref(null)
+const shareExpire = ref(86400)
+const shareCreating = ref(false)
+
+/** H5 剪贴板降级入口与最终兜底输入框 */
+const clipboardReadFailed = ref(false)
+const clipboardInputVisible = ref(false)
+const clipboardInputText = ref('')
+
+/** 待处理分享令牌：onLoad query + storage 双保险 */
+const pendingShareToken = ref('')
+const shareHandled = new Set()
+let navigating = false
+
+/**
+ * 切换预览：md-editor-v3 4.x 的 preview prop 只在初始化生效，
+ * 必须同时调用子组件暴露的 togglePreview 实例方法才能即时开合分栏。
+ */
+function toggleEditorPreview() {
+  editorPreview.value = !editorPreview.value
+  const editor = editorRef.value
+  if (editor && typeof editor.togglePreview === 'function') {
+    editor.togglePreview(editorPreview.value)
+  }
+}
+const searchVisible = ref(false)
+const trashVisible = ref(false)
+const imagePickerVisible = ref(false)
+const iconPickerVisible = ref(false)
+const iconPickerCurrent = ref(null)
+const iconPickerTarget = ref(null)
+
+/** 当前选中的目录（'' 表示全部文档） */
+const currentFolderId = ref('')
+const treeLoading = ref(false)
+const fileLoading = ref(false)
+
+/** 保存状态：dirty / saving / saved / conflict */
+const saveStatus = ref('saved')
+
+/** 冲突弹窗数据 */
+const conflictVisible = ref(false)
+const conflict = ref({ cloudVersion: 0, cloudPreview: '', cloudUpdatedAt: '' })
+
+/** 当前高亮批注 */
+const activeCommentId = ref('')
+
+/** 当前文档引用的图片：fileID → 临时 URL（显示态），供阅读器与编辑器渲染 */
+const imageUrlMap = ref({})
+
+/** 编辑器实例（用于 insertImage） */
+const editorRef = ref(null)
+
+// ---------------- 计算属性 ----------------
+const currentTitle = computed(() => {
+  const file = store.state.currentFile
+  return file ? file.name : 'Markdown 文档库'
+})
+
+const saveStatusText = computed(() => {
+  const map = { dirty: '未保存', saving: '保存中', saved: '已保存', conflict: '有冲突' }
+  return map[saveStatus.value] || ''
+})
+
+const themeLabel = computed(() => {
+  const map = { auto: '自动', light: '浅色', dark: '深色' }
+  return map[store.state.theme] || '自动'
+})
+
+/** 提纯纯文本：唯一 offset 坐标系，供阅读器与批注使用 */
+const plainText = computed(() => {
+  if (!mmText) return ''
+  return mmText.stripMarkdown(store.state.editorContent)
+})
+
+/** 编辑器受控内容代理：读写都落到 store.editorContent */
+const editorContentProxy = computed({
+  get: () => store.state.editorContent,
+  set: (value) => store.setEditor(value)
+})
+
+// ---------------- 生命周期 ----------------
+onLoad((options) => {
+  updateViewport()
+  // 分享链接可能藏在 hash 的 query 里，也可能因路由重建丢失；storage 兜底
+  const fromQuery = options && typeof options.share_token === 'string' ? options.share_token : ''
+  const fromStorage = String(uni.getStorageSync('mm_pending_share_token') || '')
+  pendingShareToken.value = fromQuery || fromStorage
+  if (fromQuery) {
+    try { uni.setStorageSync('mm_pending_share_token', fromQuery) } catch (error) { /* 存储不可用忽略 */ }
+  }
+  // uni-id-pages 登录成功会全局广播；这里只复位失效幂等标记，
+  // 保证 reLaunch / 页面重建后组件内标记与模块级标记保持一致。
+  if (typeof uni !== 'undefined' && uni && typeof uni.$on === 'function') {
+    uni.$on('uni-id-pages-login-success', handleLoginSuccessSync)
+  }
+})
+
+// 登录页返回时重新同步身份并补拉数据（守卫只在配置就绪后执行一次）
+onShow(() => {
+  if (!store.state.ready) return
+  const token = uni.getStorageSync('uni_id_token')
+  // 分享链接与剪贴板不依赖登录态，先处理（匿名分享也能打开）
+  resolveShare()
+  inspectClipboard()
+  // 只有拿到「新的、本地未过期」的 token 时，才复位失效标记并重新同步身份；
+  // 已失效 / 无 token 的情况由 guardLogin 引导过一次，此处不再重复发请求。
+  if (!token || isLocalTokenExpired()) return
+  resetLoginGuard()
+  loginGuardDone = false
+  if (!store.state.user.uid) {
+    loadIdentity().then(() => bootstrap())
+  }
+})
+
+onMounted(() => {
+  updateViewport()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', updateViewport)
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('selectionchange', captureShellSelection)
+  }
+})
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', updateViewport)
+  }
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('selectionchange', captureShellSelection)
+  }
+  if (typeof uni !== 'undefined' && uni && typeof uni.$off === 'function') {
+    uni.$off('uni-id-pages-login-success', handleLoginSuccessSync)
+  }
+})
+
+// 首屏就绪后加载目录树与文件列表
+watch(() => store.state.ready, (value) => {
+  if (!value) return
+  // 配置就绪后再做登录守卫，避免用默认配置误跳登录页；
+  // 守卫判定登录态已失效时不拉数据，避免并发请求再触发一轮失效提示。
+  const canBrowse = guardLogin()
+  if (canBrowse) bootstrap()
+}, { immediate: true })
+
+// 编辑内容变化即视为未保存
+watch(() => store.state.editorContent, () => {
+  if (saveStatus.value === 'saved') saveStatus.value = 'dirty'
+})
+
+function updateViewport() {
+  // #ifdef H5
+  isMobile.value = window.innerWidth < 768
+  // #endif
+  // #ifndef H5
+  isMobile.value = true
+  // #endif
+}
+
+/**
+ * 空态点击：移动端直接拉起左侧目录抽屉；
+ * 桌面端目录树本就常驻，给一句提示指向左侧即可，不强行走高亮。
+ */
+function handleEmptyTap() {
+  if (isMobile.value) {
+    drawerVisible.value = true
+    return
+  }
+  toast.show('请在左侧目录中选择文档')
+}
+
+// ---------------- 登录态与账号入口 ----------------
+/** 是否已登录（匿名共享模式不算登录） */
+const isLoggedIn = computed(() => {
+  const user = store.state.user || {}
+  return !!user.uid && user.anonymous !== true
+})
+
+function goLogin() {
+  // 携带回跳地址：login-page.mixin 在 onLoad 里透传给 mutations.loginSuccess，
+  // loginBack 据此直接 redirectTo 首页，不再依赖 getCurrentPages() 统计
+  // route.split('/')[3] 的 delta（H5 下可能为 0，navigateBack({delta:0}) 不跳转）。
+  const redirect = encodeURIComponent('/pages/index/index')
+  uni.navigateTo({
+    url: `/uni_modules/uni-id-pages/pages/login/login-withpwd?uniIdRedirectUrl=${redirect}`
+  })
+}
+
+/** 登录成功后复位失效幂等标记，避免页面重建后新旧标记不一致 */
+function handleLoginSuccessSync() {
+  resetLoginGuard()
+  loginGuardDone = false
+}
+
+function handleUserMenu() {
+  uni.showActionSheet({
+    itemList: ['个人资料', '退出登录'],
+    success: (res) => {
+      if (res.tapIndex === 0) {
+        uni.navigateTo({ url: '/uni_modules/uni-id-pages/pages/userinfo/userinfo' })
+      } else if (res.tapIndex === 1) {
+        logout()
+      }
+    }
+  })
+}
+
+/** 退出登录：清本地 token 与内存身份，回到登录页 */
+function logout() {
+  ;['uni_id_token', 'uni_id_token_expired'].forEach((key) => uni.removeStorageSync(key))
+  store.setUser({ uid: '', anonymous: false })
+  // 主动退出后复位守卫，保证本页后续仍能正常引导重新登录
+  resetLoginGuard()
+  loginGuardDone = false
+  uni.showToast({ title: '已退出登录', icon: 'none' })
+  setTimeout(goLogin, 400)
+}
+
+/**
+ * 从 JWT payload 解析 uid，仅用于前端展示登录态（不替代服务端验签）。
+ * 仅在本地凭据未过期、但 uni-id-co 暂时不可用时兜底，避免「已登录却显示未登录」；
+ * 凭据已过期时不再兜底，确保顶栏「登录」入口可见。
+ */
+function decodeUidFromToken(token) {
+  try {
+    const parts = String(token || '').split('.')
+    if (parts.length < 2 || typeof atob !== 'function') return ''
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const json = decodeURIComponent(
+      atob(padded)
+        .split('')
+        .map((char) => '%' + ('00' + char.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    )
+    const payload = JSON.parse(json)
+    return payload.uid || payload.user_id || ''
+  } catch (error) {
+    return ''
+  }
+}
+
+// ---------------- 登录守卫 ----------------
+/**
+ * 首屏登录守卫。
+ * @returns {boolean} 是否可以继续拉取目录 / 文件数据
+ */
+function guardLogin() {
+  const config = store.state.config || {}
+  if (config.account_enabled === false) {
+    // 账号功能关闭：匿名直入，不弹登录（PRD Q3）
+    store.setUser({ anonymous: true, uid: ANONYMOUS_USER_ID })
+    loginGuardDone = true
+    return true
+  }
+  const token = uni.getStorageSync('uni_id_token')
+  // 无凭据或本地凭据确实过期：只在首次进入时清态 + 提示 + 跳登录页，
+  // 避免 watch(ready) / onShow / 并发请求把同一失效重复处理。
+  if (!token || isLocalTokenExpired()) {
+    if (!loginGuardDone) {
+      loginGuardDone = true
+      // 有待处理的分享链接时带 share_token 回跳，登录回来后仍能打开；
+      // 否则沿用原失效引导，不改动已锁定的全局契约。
+      const pending = pendingShareToken.value || String(uni.getStorageSync('mm_pending_share_token') || '')
+      if (pending) goLoginWithShare(pending)
+      else handleLoginExpired()
+    }
+    // 置为未登录，顶栏 v-else 的「登录」入口随之可见
+    store.setUser({ uid: '', anonymous: false })
+    return false
+  }
+  loginGuardDone = true
+  loadIdentity()
+  return true
+}
+
+/**
+ * 同步身份。云端 getUserInfo 失败只代表「校验请求失败」，
+ * 不能据此判定 token 过期，也不能无条件用本地 token 把界面恢复成「已登录」：
+ * 否则会出现「提示登录失效，却仍显示账号菜单、登录入口被隐藏」的矛盾态。
+ */
+async function loadIdentity() {
+  try {
+    const uniIdCo = uniCloud.importObject('uni-id-co', { customUI: true })
+    const res = await uniIdCo.getUserInfo()
+    const info = res && res.userInfo
+    if (info && info._id) {
+      store.setUser({ uid: info._id, anonymous: false })
+      return
+    }
+  } catch (error) {
+    // uni-id-co 未部署、返回 500 或调用失败：属于云端服务异常，不弹「已过期」；
+    // 只有明确携带 uni-id token 失效错误码 / 文案时才判定为真过期并引导重新登录。
+    if (isTokenInvalid(error)) {
+      handleLoginExpired()
+      store.setUser({ uid: '', anonymous: false })
+      return
+    }
+  }
+  if (isLocalTokenExpired()) {
+    store.setUser({ uid: '', anonymous: false })
+    return
+  }
+  // 本地 token 未过期时才用 JWT 兜底展示登录态（不替代服务端验签）
+  const uid = decodeUidFromToken(uni.getStorageSync('uni_id_token'))
+  if (uid) store.setUser({ uid, anonymous: false })
+}
+
+// ---------------- 数据加载 ----------------
+async function bootstrap() {
+  await Promise.all([loadTree(), loadFiles(currentFolderId.value)])
+}
+
+/** 自定义图标的临时 URL 由页面批量换取后回填到 icon.url */
+async function attachIconUrls(folders) {
+  const ids = (folders || [])
+    .filter(item => item.icon && item.icon.type === 'custom' && item.icon.value)
+    .map(item => item.icon.value)
+  if (ids.length === 0) return folders || []
+  const res = await getTempUrls({ file_ids: ids })
+  const map = res.code === 0 && res.data ? res.data : {}
+  return (folders || []).map(item => {
+    if (item.icon && item.icon.type === 'custom') {
+      return { ...item, icon: { ...item.icon, url: map[item.icon.value] || '' } }
+    }
+    return item
+  })
+}
+
+async function loadTree() {
+  treeLoading.value = true
+  const res = await listTree()
+  treeLoading.value = false
+  if (res.code === 0) store.setTree(await attachIconUrls(res.data || []))
+}
+
+async function loadFiles(parentId) {
+  fileLoading.value = true
+  const res = await listFiles({ parent_id: parentId || '', page: 1, pageSize: 100 })
+  fileLoading.value = false
+  if (res.code === 0 && res.data) store.setFiles(res.data.list || [])
+}
+
+async function reloadComments(fileId) {
+  if (!fileId) return
+  const res = await listByFile({ file_id: fileId })
+  if (res.code === 0) store.setComments(res.data || [])
+}
+
+// ---------------- 目录树交互 ----------------
+function handleFolderSelect(node) {
+  currentFolderId.value = node ? node._id : ''
+  loadFiles(currentFolderId.value)
+}
+
+function handleDrawerFolderSelect(node) {
+  // 点击文件夹只刷新右侧文档列表，抽屉保持展开，便于继续浏览并点开该目录下的文档；
+  // 关闭入口见抽屉右上角关闭按钮 / 遮罩，打开文档时仍由 handleDrawerOpenFile 收起。
+  handleFolderSelect(node)
+}
+
+async function handleCreateFolder({ parent_id }) {
+  const name = await openInput({ title: '新建文件夹', placeholder: '文件夹名称' })
+  if (!name) return
+  const res = await createFolder({ parent_id: parent_id || '', name })
+  if (res.code === 0) {
+    toast.show('已创建')
+    await loadTree()
+  }
+}
+
+async function handleRenameFolder(node) {
+  if (!node) return
+  const name = await openInput({ title: '重命名', placeholder: '名称', value: node.name })
+  if (!name) return
+  const res = await rename({ file_id: node._id, name })
+  if (res.code === 0) {
+    toast.show('已重命名')
+    await loadTree()
+    await loadFiles(currentFolderId.value)
+  }
+}
+
+function handleRemoveFolder(node) {
+  if (!node) return
+  uni.showModal({
+    title: '删除文件夹',
+    content: '文件夹及其内容将移入回收站',
+    success: async (res) => {
+      if (!res.confirm) return
+      const result = await softDelete({ file_ids: [node._id] })
+      if (result.code === 0) {
+        toast.show('已移入回收站')
+        await loadTree()
+        await loadFiles(currentFolderId.value)
+      }
+    }
+  })
+}
+
+function handleChangeIcon(node) {
+  if (!node) return
+  iconPickerTarget.value = node
+  iconPickerCurrent.value = node.icon || null
+  iconPickerVisible.value = true
+}
+
+/**
+ * 归一化图标结构：云端 normalizeIcon 只接受 {type:'preset'|'custom', value:string}，
+ * 而本地草稿的 custom 图标还带 url（本地预览用）。这里剥掉前端专用字段，
+ * 同时把结构非法的图标拦在本地，避免发出必然失败的请求让用户只看到笼统提示。
+ * @param {object|null} icon 选择器草稿
+ * @returns {object|null} 云对象可接受的图标结构
+ */
+function toCloudIcon(icon) {
+  if (!icon) return null
+  const type = icon.type === 'preset' || icon.type === 'custom' ? icon.type : ''
+  const value = typeof icon.value === 'string' ? icon.value.trim() : ''
+  if (!type || !value) return null
+  return { type, value }
+}
+
+async function handleIconConfirm(icon) {
+  const target = iconPickerTarget.value
+  if (!target) return
+  const cloudIcon = toCloudIcon(icon)
+  // 结构非法时给出具体原因；合法请求失败时 call() 已弹出云端文案，不重复提示
+  if (icon && !cloudIcon) {
+    toast.show('图标格式不正确，请重新选择')
+    iconPickerTarget.value = null
+    return
+  }
+  const res = await updateIcon({ folder_id: target._id, icon: cloudIcon })
+  if (res.code === 0) {
+    toast.show('图标已更新')
+    await loadTree()
+  }
+  iconPickerTarget.value = null
+}
+
+// ---------------- 文件交互 ----------------
+async function openDocument(file) {
+  if (!file) return
+  // 本地正常打开的文档恢复可编辑；分享只读标记只由 resolveShare 设置
+  shareReadOnly.value = false
+  const res = await getContent({ file_id: file._id })
+  if (res.code !== 0 || !res.data) return
+  let content = res.data.content || ''
+  let readError = res.data.error || ''
+  if (!content && res.data.tempUrl && typeof fetch === 'function') {
+    try {
+      const response = await fetch(res.data.tempUrl)
+      content = await response.text()
+    } catch (error) {
+      readError = '内容下载失败：' + ((error && error.message) || '可能是云存储跨域限制')
+      content = ''
+    }
+  }
+  store.openFile(res.data.doc, content, [])
+  await Promise.all([reloadComments(file._id), loadImageUrlMap(content)])
+  mode.value = 'read'
+  activeCommentId.value = ''
+  saveStatus.value = 'saved'
+  if (!content) {
+    toast.show(readError || '未读取到文档内容')
+  }
+}
+
+function handleOpenFile(file) {
+  openDocument(file)
+}
+
+function handleDrawerOpenFile(file) {
+  drawerVisible.value = false
+  openDocument(file)
+}
+
+function handleBatchDelete(ids) {
+  if (!ids || ids.length === 0) return
+  uni.showModal({
+    title: '删除',
+    content: '所选内容将移入回收站',
+    success: async (res) => {
+      if (!res.confirm) return
+      const result = await softDelete({ file_ids: ids })
+      if (result.code === 0) {
+        toast.show('已移入回收站')
+        await loadFiles(currentFolderId.value)
+        await loadTree()
+      }
+    }
+  })
+}
+
+// ---------------- 重命名 / 移动 / 导出 ----------------
+
+/** 文档重命名：重名由服务端 genUniqueName 统一处理，前端不拼 -copyN */
+async function handleRenameFile(file) {
+  if (!file) return
+  const name = await openInput({ title: '重命名', placeholder: '名称', value: file.name })
+  if (!name || name === file.name) return
+  const res = await rename({ file_id: file._id, name })
+  if (res.code === 0) {
+    toast.show('已重命名')
+    await loadFiles(currentFolderId.value)
+    if (store.state.currentFile && store.state.currentFile._id === file._id && res.data) {
+      store.openFile(
+        { ...store.state.currentFile, name: res.data.name },
+        store.state.editorContent,
+        store.state.comments
+      )
+    }
+  }
+}
+
+const moveVisible = ref(false)
+const moveSource = ref(null)
+/** 当前浏览到的父级目录（'' 表示根目录）；只决定展示层级，不代表已选目标 */
+const moveCurrentId = ref('')
+
+// 关闭或重新打开弹层都回到根目录，避免下次停留在上次的深层目录
+watch(moveVisible, () => {
+  moveCurrentId.value = ''
+})
+
+/** 文档「移动到…」 */
+function handleMoveFile(file) {
+  if (!file) return
+  moveSource.value = file
+  moveCurrentId.value = ''
+  moveVisible.value = true
+}
+
+/** 文件夹「移动到…」 */
+function handleMoveFolder(node) {
+  if (!node) return
+  // 防御：不依赖 listTree 的字段投影是否完整，显式标注为文件夹。
+  // 否则 moveTargets 的「不能移动到自己的子目录」判定会恒为 false。
+  moveSource.value = Object.assign({}, node, { type: 'folder' })
+  moveCurrentId.value = ''
+  moveVisible.value = true
+}
+
+/** 判断 folderId 是否为 ancestorId 的后代（用于禁止移入自身子树） */
+function isDescendantOf(folderId, ancestorId, folders) {
+  const map = new Map()
+  for (const folder of folders || []) map.set(folder._id, folder)
+  let cursor = folderId
+  for (let depth = 0; depth < 50 && cursor; depth++) {
+    const node = map.get(cursor)
+    if (!node) return false
+    if (node.parent_id === ancestorId) return true
+    cursor = node.parent_id
+  }
+  return false
+}
+
+/** 目标文件夹候选：根节点 + 全部文件夹；非法目标置灰并给出原因 */
+const moveTargets = computed(() => {
+  const source = moveSource.value
+  if (!source) return []
+  const folders = store.state.tree || []
+  const rootIsCurrent = (source.parent_id || '') === ''
+  const list = [{
+    _id: '',
+    name: '全部文档',
+    depth: 0,
+    // 目标就是当前所在目录时同样置灰，避免发出无效 move 后弹出「已移动」的假成功提示
+    disabled: rootIsCurrent,
+    current: rootIsCurrent,
+    reason: rootIsCurrent ? '已在此目录' : ''
+  }]
+
+  const childrenMap = {}
+  for (const folder of folders) {
+    if (!folder || !folder._id) continue
+    const parentId = folder.parent_id || ''
+    if (!childrenMap[parentId]) childrenMap[parentId] = []
+    childrenMap[parentId].push(folder)
+  }
+
+  const walk = (parentId, depth) => {
+    const children = (childrenMap[parentId] || []).slice().sort((left, right) =>
+      String(left.name || '').localeCompare(String(right.name || ''))
+    )
+    for (const folder of children) {
+      let disabled = false
+      let reason = ''
+      if (folder._id === source._id) {
+        disabled = true
+        reason = '不能移动到自身'
+      } else if (source.type === 'folder' && isDescendantOf(folder._id, source._id, folders)) {
+        disabled = true
+        reason = '不能移动到自己的子目录'
+      }
+      const isCurrent = (source.parent_id || '') === folder._id
+      if (!disabled && isCurrent) {
+        disabled = true
+        reason = '已在此目录'
+      }
+      list.push({ _id: folder._id, name: folder.name, depth, disabled, current: isCurrent, reason })
+      walk(folder._id, depth + 1)
+    }
+  }
+  walk('', 1)
+  return list
+})
+
+/** 全量候选按 _id 建索引，供层级浏览复用同一套 disabled / current / reason 判定 */
+const moveTargetIndex = computed(() => {
+  const index = new Map()
+  for (const item of moveTargets.value) index.set(item._id || '', item)
+  return index
+})
+
+/** 当前浏览目录在候选表里的合法性标记（作为「移动到此处」的目标） */
+const moveCurrentTarget = computed(() =>
+  moveTargetIndex.value.get(moveCurrentId.value || '') ||
+  { _id: moveCurrentId.value || '', disabled: false, reason: '' }
+)
+
+/** 根目录项始终可选，沿用候选表里的根节点判定 */
+const moveRootTarget = computed(() =>
+  moveTargetIndex.value.get('') || { _id: '', disabled: false, reason: '' }
+)
+
+/** 「移动到此处」在当前层级为非法目标时禁用 */
+const moveHereDisabled = computed(() => !!moveCurrentTarget.value.disabled)
+
+/** 当前浏览路径的面包屑（不含根，根由模板固定渲染） */
+const moveBreadcrumb = computed(() => {
+  const folders = store.state.tree || []
+  const map = new Map()
+  for (const folder of folders) {
+    if (folder && folder._id) map.set(folder._id, folder)
+  }
+  const path = []
+  let cursor = moveCurrentId.value || ''
+  for (let depth = 0; depth < 50 && cursor; depth++) {
+    const node = map.get(cursor)
+    if (!node) break
+    path.unshift({ _id: node._id, name: node.name })
+    cursor = node.parent_id || ''
+  }
+  return path
+})
+
+/** 当前父级的直接子目录：点击只进入浏览，不执行移动；置灰与原因沿用候选表 */
+const moveBrowseTargets = computed(() => {
+  const folders = store.state.tree || []
+  const parentId = moveCurrentId.value || ''
+  return folders
+    .filter(folder => folder && folder._id && (folder.parent_id || '') === parentId)
+    .slice()
+    .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')))
+    .map(folder => {
+      const flag = moveTargetIndex.value.get(folder._id) || {}
+      return {
+        _id: folder._id,
+        name: folder.name,
+        disabled: !!flag.disabled,
+        current: !!flag.current,
+        reason: flag.reason || '',
+        hasChildren: folders.some(child => child && (child.parent_id || '') === folder._id)
+      }
+    })
+})
+
+/**
+ * 点击目录项：仅切换浏览层级，不移动、不关闭弹层。
+ * 浏览与「作为移动目标」解耦：置灰项（自身 / 后代 / 已在此目录）仍可进入继续浏览，
+ * 但确认时由 moveHereDisabled 与 chooseMoveTarget 的 disabled 早退禁止移动，
+ * 这样文档当前所在目录的子目录依然可达。
+ */
+function browseMoveTarget(item) {
+  if (!item) return
+  moveCurrentId.value = item._id || ''
+}
+
+/** 面包屑 / 根目录项：跳到指定层级继续浏览（合法性在确认环节判定） */
+function moveToLevel(folderId) {
+  moveCurrentId.value = folderId || ''
+}
+
+/** 返回上一级 */
+function moveUpOneLevel() {
+  const crumbs = moveBreadcrumb.value
+  moveCurrentId.value = crumbs.length >= 2 ? crumbs[crumbs.length - 2]._id : ''
+}
+
+/** 确认「移动到此处」：以当前浏览层级为目标，沿用原有合法性早退与刷新链路 */
+async function confirmMoveHere() {
+  if (!moveSource.value) return
+  await chooseMoveTarget(moveCurrentTarget.value)
+}
+
+/** 选中目标目录后执行移动，成功后刷新目录树与当前目录列表 */
+async function chooseMoveTarget(target) {
+  const source = moveSource.value
+  if (!source || !target || target.disabled) return
+  const res = await move({ file_id: source._id, parent_id: target._id || '' })
+  if (res.code === 0) {
+    toast.show('已移动')
+    moveVisible.value = false
+    moveSource.value = null
+    await Promise.all([loadTree(), loadFiles(currentFolderId.value)])
+  }
+}
+
+/** 扫描存储态 token，批量换取临时 URL（不写 imageUrlMap，供导出等场景复用） */
+async function resolveImageUrlsForText(content) {
+  const ids = Array.from(new Set(
+    (String(content || '').match(/mm-image:\/\/([^\s)'"]+)/g) || [])
+      .map(token => token.replace('mm-image://', ''))
+  ))
+  if (ids.length === 0) return {}
+  const res = await getTempUrls({ file_ids: ids })
+  return res.code === 0 && res.data ? res.data : {}
+}
+
+/**
+ * 导出单篇 md（R15 / AC-24）：
+ * exportFile → content 为空时用 tempUrl 兜底 fetch → 存储态转显示态 → downloadMarkdown。
+ * 全程只读，不触发任何写接口。
+ */
+async function handleExport(file) {
+  if (!file) return
+  const res = await exportFile({ file_id: file._id })
+  if (res.code !== 0 || !res.data) return
+
+  let content = res.data.content || ''
+  if (!content && res.data.tempUrl && typeof fetch === 'function') {
+    try {
+      const response = await fetch(res.data.tempUrl)
+      content = await response.text()
+    } catch (error) {
+      content = ''
+    }
+  }
+  if (!content) {
+    toast.show('导出失败，请重试')
+    return
+  }
+
+  const urlMap = await resolveImageUrlsForText(content)
+  const displayContent = content.replace(/mm-image:\/\/([^\s)'"]+)/g, (matched, fileId) => urlMap[fileId] || matched)
+  downloadMarkdown(res.data.name || file.name, displayContent)
+  toast.show('已导出')
+}
+
+// ---------------- 上传 / 导入 ----------------
+function readFileText(file) {
+  return new Promise((resolve, reject) => {
+    if (typeof FileReader === 'undefined') {
+      reject(new Error('当前环境不支持读取文件'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('读取失败'))
+    reader.readAsText(file)
+  })
+}
+
+/**
+ * 在当前文件夹内新建一篇 md 文档。
+ * 复用现有上传链路（uploadCloudFile + registerUpload），不新增云对象方法；
+ * 服务端 genUniqueName 会自动处理同名去重。创建后直接打开并进入编辑态。
+ */
+async function handleCreateFile() {
+  // #ifdef H5
+  const content = '# 未命名文档\n'
+  const uid = (store.state.user && store.state.user.uid) || 'anonymous'
+  try {
+    const cloudPath = CLOUD_PATH.markdown(uid).replace('{uuid}', genUuid())
+    const blob = new Blob([content], { type: 'text/markdown' })
+    const uploaded = await uploadCloudFile({ cloudPath, file: blob })
+    const storageKey = uploaded && uploaded.fileID
+    if (!storageKey) throw new Error('创建失败')
+    const res = await registerUpload({
+      name: '未命名文档.md',
+      parent_id: currentFolderId.value,
+      storage_key: storageKey,
+      content
+    })
+    if (res.code !== 0 || !res.data) throw new Error('创建失败')
+    await Promise.all([loadFiles(currentFolderId.value), loadTree()])
+    await openDocument(res.data)
+    mode.value = 'edit'
+  } catch (error) {
+    toast.show('新建失败，请重试')
+  }
+  // #endif
+  // #ifndef H5
+  toast.show('当前仅支持网页端新建')
+  // #endif
+}
+
+function handleUpload() {
+  // #ifdef H5
+  uni.chooseFile({
+    count: 9,
+    extension: ['.md'],
+    success: async (chooseRes) => {
+      const tempFiles = (chooseRes && chooseRes.tempFiles) || []
+      const tempPaths = (chooseRes && chooseRes.tempFilePaths) || []
+      const tasks = tempFiles
+        .map((file, index) => ({ file, filePath: tempPaths[index] }))
+        .filter(item => item.file && item.filePath)
+      if (tasks.length === 0) return
+
+      const uid = (store.state.user && store.state.user.uid) || 'anonymous'
+      let uploadedCount = 0
+      let failedCount = 0
+
+      const uploadOne = async ({ file, filePath }) => {
+        try {
+          const content = await readFileText(file)
+          const cloudPath = CLOUD_PATH.markdown(uid).replace('{uuid}', genUuid())
+          const uploaded = await uploadCloudFile({ cloudPath, filePath })
+          const storageKey = uploaded && uploaded.fileID
+          if (!storageKey) throw new Error('上传失败')
+          const res = await registerUpload({
+            name: file.name || '未命名.md',
+            parent_id: currentFolderId.value,
+            storage_key: storageKey,
+            content
+          })
+          if (res.code === 0) uploadedCount += 1
+          else failedCount += 1
+        } catch (error) {
+          failedCount += 1
+        }
+      }
+
+      // 限并发 3：多选上传时避免一次性占满云存储并发与带宽
+      for (let i = 0; i < tasks.length; i += 3) {
+        await Promise.all(tasks.slice(i, i + 3).map(uploadOne))
+      }
+
+      if (uploadedCount > 0) {
+        toast.show(failedCount > 0 ? `成功 ${uploadedCount} 篇，失败 ${failedCount} 篇` : `已上传 ${uploadedCount} 篇`)
+        await loadFiles(currentFolderId.value)
+        await loadTree()
+      } else {
+        toast.show('上传失败，请重试')
+      }
+    }
+  })
+  // #endif
+  // #ifndef H5
+  toast.show('当前仅支持网页端上传')
+  // #endif
+}
+
+function handleImport() {
+  // #ifdef H5
+  uni.chooseFile({
+    count: 1,
+    extension: ['.md'],
+    success: async (chooseRes) => {
+      const file = chooseRes.tempFiles && chooseRes.tempFiles[0]
+      if (!file) return
+      try {
+        const content = await readFileText(file)
+        const res = await importFile({
+          name: file.name || '未命名.md',
+          parent_id: currentFolderId.value,
+          content
+        })
+        if (res.code === 0) {
+          toast.show('导入成功')
+          await loadFiles(currentFolderId.value)
+          await loadTree()
+        }
+      } catch (error) {
+        toast.show('导入失败，请重试')
+      }
+    }
+  })
+  // #endif
+  // #ifndef H5
+  toast.show('当前仅支持网页端导入')
+  // #endif
+}
+
+// ---------------- 保存与版本冲突 ----------------
+async function handleSave() {
+  const file = store.state.currentFile
+  if (!file || saveStatus.value === 'saving') return
+  saveStatus.value = 'saving'
+
+  const res = await saveContent({
+    file_id: file._id,
+    content: store.state.editorContent,
+    base_version: store.state.baseVersion
+  })
+
+  if (res.code === 0) {
+    applySaveSuccess(file, res.data)
+    return
+  }
+  if (res.code === 2001) {
+    // 冲突：不弹 Toast、不清空编辑器、不跳转，交给冲突弹窗
+    saveStatus.value = 'conflict'
+    conflict.value = {
+      cloudVersion: (res.data && res.data.cloudVersion) || 0,
+      cloudPreview: (res.data && res.data.cloudContent) || '',
+      cloudUpdatedAt: (res.data && res.data.cloudUpdatedAt) || ''
+    }
+    conflictVisible.value = true
+    return
+  }
+  saveStatus.value = 'dirty'
+  toast.show(res.message || '保存失败，请重试')
+}
+
+async function applySaveSuccess(file, data) {
+  saveStatus.value = 'saved'
+  store.resetBaseVersion(data.version)
+  // 只刷新元数据与版本，editorContent 仍是当前内容
+  store.openFile(
+    {
+      ...file,
+      version: data.version,
+      size: data.size,
+      content_hash: data.content_hash,
+      updated_at: data.updated_at
+    },
+    store.state.editorContent,
+    store.state.comments
+  )
+  await reloadComments(file._id)
+  toast.show('已保存')
+  // 图片引用追踪：以刚保存的正文对齐引用表。静默失败不干扰保存成功提示，
+  // 且该方法幂等——下次保存成功时会自动补正。
+  syncRefs({ doc_id: file._id, content: store.state.editorContent }).catch(() => {})
+}
+
+async function handleConflictOverwrite() {
+  const file = store.state.currentFile
+  if (!file) return
+  conflictVisible.value = false
+  saveStatus.value = 'saving'
+  const res = await saveContent({
+    file_id: file._id,
+    content: store.state.editorContent,
+    base_version: conflict.value.cloudVersion,
+    force: true
+  })
+  if (res.code === 0) applySaveSuccess(file, res.data)
+  else {
+    saveStatus.value = 'dirty'
+    toast.show(res.message || '保存失败，请重试')
+  }
+}
+
+function handleConflictDiscard() {
+  // 放弃：不提交任何写操作，编辑器内容原样保留，停留编辑态
+  conflictVisible.value = false
+  saveStatus.value = 'dirty'
+}
+
+// ---------------- 批注 ----------------
+function handleSelectText(payload) {
+  // 阅读态选区由 mm-annotation 新建批注时使用
+  pendingSelection.value = payload
+}
+
+const pendingSelection = ref(null)
+
+async function handleCreateComment(payload) {
+  const file = store.state.currentFile
+  // 优先用内联传入的选区，缺失时回退到阅读态选区缓存
+  const selection = payload || pendingSelection.value
+  if (!file || !selection) return
+  const res = await addComment({
+    file_id: file._id,
+    selected_text: selection.selectedText,
+    prefix: selection.prefix,
+    suffix: selection.suffix,
+    start_offset: selection.start,
+    end_offset: selection.end,
+    comment: selection.comment
+  })
+  if (res.code === 0) {
+    toast.show('批注已添加')
+    await reloadComments(file._id)
+  }
+}
+
+async function handleUpdateComment({ comment_id, comment }) {
+  const file = store.state.currentFile
+  if (!file) return
+  const res = await updateComment({ comment_id, comment })
+  if (res.code === 0) await reloadComments(file._id)
+}
+
+async function handleRemoveComment({ comment_id }) {
+  const file = store.state.currentFile
+  if (!file) return
+  const res = await removeComment({ comment_id })
+  if (res.code === 0) {
+    toast.show('批注已删除')
+    await reloadComments(file._id)
+  }
+}
+
+/** 点击批注高亮：设置 active 并在 mark 旁显示气泡（兼容旧的直接 comment 形态） */
+function handleCommentClick(payload) {
+  const comment = payload && payload.comment ? payload.comment : payload
+  activeCommentId.value = comment ? comment._id : ''
+  const rect = payload && payload.rect
+  if (!comment || !rect || typeof window === 'undefined') {
+    commentBubble.value = null
+    return
+  }
+  const width = 260
+  const height = 120
+  const left = Math.max(8, Math.min((rect.left + rect.right) / 2 - width / 2, window.innerWidth - width - 8))
+  const below = rect.bottom + 8
+  const top = below + height > window.innerHeight ? Math.max(8, rect.top - height - 8) : below
+  commentBubble.value = { comment, left, top }
+}
+
+const commentBubbleStyle = computed(() => {
+  const b = commentBubble.value
+  return b ? `left:${b.left}px;top:${b.top}px;` : ''
+})
+
+/** 气泡与列表统一截断规则 */
+function truncateBubble(text) {
+  const value = typeof text === 'string' ? text : ''
+  return value.length > 60 ? `${value.slice(0, 60)}…` : value
+}
+
+function formatCommentTime(value) {
+  if (!value) return ''
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = num => String(num).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function openAllComments() {
+  allCommentsVisible.value = true
+}
+
+function locateCommentFromList(item) {
+  handleLocateComment(item)
+  allCommentsVisible.value = false
+}
+
+/**
+ * 主壳自己监听选区：批注列表收起时 mm-annotation 不渲染，
+ * 浮动「添加批注」按钮仍需正确出现/隐藏。
+ */
+async function captureShellSelection() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return
+  const container = document.querySelector('.mm-viewer__body')
+  if (!container) {
+    annotationSelection.value = null
+    return
+  }
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    annotationSelection.value = null
+    return
+  }
+  const { getSelectionOffsets } = await import('@/common/utils/selection.js')
+  annotationSelection.value = getSelectionOffsets(container, store.state.editorContent || '')
+}
+
+/** 批注子组件上报的选区状态（列表展开时同样驱动浮动按钮） */
+function handleAnnotationSelection(payload) {
+  const data = payload && typeof payload === 'object' && 'active' in payload
+    ? payload
+    : { active: !!payload, offsets: null }
+  annotationSelection.value = data.active ? (data.offsets || annotationSelection.value) : null
+}
+
+function openShellComment() {
+  if (!annotationSelection.value) return
+  commentDialogText.value = ''
+  commentDialogVisible.value = true
+}
+
+async function submitShellComment() {
+  const text = String(commentDialogText.value || '').trim()
+  const offsets = annotationSelection.value
+  if (!text || !offsets) return
+  await handleCreateComment({
+    selectedText: offsets.selectedText,
+    prefix: offsets.prefix,
+    suffix: offsets.suffix,
+    start: offsets.start,
+    end: offsets.end,
+    comment: text
+  })
+  commentDialogVisible.value = false
+  annotationSelection.value = null
+}
+
+// ---------------- 只读分享 ----------------
+function handleShare(file) {
+  if (!file) return
+  shareTarget.value = file
+  shareExpire.value = 86400
+  shareVisible.value = true
+}
+
+async function confirmShare() {
+  const target = shareTarget.value
+  if (!target || shareCreating.value) return
+  shareCreating.value = true
+  try {
+    const { createShare } = await import('@/common/api/mm-share.js')
+    const { writeShareUrl } = await import('@/common/utils/clipboard.js')
+    const res = await createShare({ file_id: target._id, expire_seconds: shareExpire.value })
+    if (res.code === 0 && res.data && res.data.token) {
+      const copied = await writeShareUrl(res.data.token)
+      toast.show(copied ? '链接已复制' : '分享链接已创建')
+      shareVisible.value = false
+    } else {
+      toast.show(res.message || '分享创建失败，请重试')
+    }
+  } finally {
+    shareCreating.value = false
+    shareTarget.value = null
+  }
+}
+
+/** 带分享令牌跳登录，登录成功后由 loginBack 带 query 回到首页 */
+function goLoginWithShare(token) {
+  const redirect = encodeURIComponent(`/pages/index/index?share_token=${token}`)
+  uni.navigateTo({
+    url: `/uni_modules/uni-id-pages/pages/login/login-withpwd?uniIdRedirectUrl=${redirect}`
+  })
+}
+
+/** 打开分享文档前处理未保存改动；返回 false 表示中止 */
+async function saveBeforeNavigate() {
+  if (saveStatus.value !== 'dirty') return true
+  return await new Promise(resolve => {
+    uni.showModal({
+      title: '有未保存的改动',
+      content: '打开分享文档将放弃当前未保存的改动，是否继续？',
+      success: res => resolve(!!res.confirm),
+      fail: () => resolve(false)
+    })
+  })
+}
+
+/** 幂等解析待处理的分享令牌；只读打开，不返回写授权 */
+async function resolveShare() {
+  const token = pendingShareToken.value || String(uni.getStorageSync('mm_pending_share_token') || '')
+  if (!token || shareHandled.has(token) || navigating) return
+  if (store.state.config.account_enabled && !isLoggedIn.value) {
+    // guardLogin 会带 token 跳登录；保留待处理令牌，登录回来再试
+    pendingShareToken.value = token
+    return
+  }
+  shareHandled.add(token)
+  pendingShareToken.value = ''
+  try { uni.removeStorageSync('mm_pending_share_token') } catch (error) { /* 忽略 */ }
+  navigating = true
+  try {
+    if (!(await saveBeforeNavigate())) {
+      shareHandled.delete(token)
+      return
+    }
+    const { openShare } = await import('@/common/api/mm-share.js')
+    const res = await openShare({ token })
+    if (res.code !== 0 || !res.data) {
+      toast.show(res.message || '分享链接无效')
+      shareHandled.delete(token)
+      return
+    }
+    const data = res.data
+    let content = data.content || ''
+    if (!content && data.tempUrl && typeof fetch === 'function') {
+      try {
+        const response = await fetch(data.tempUrl)
+        content = await response.text()
+      } catch (error) {
+        content = ''
+      }
+    }
+    shareReadOnly.value = true
+    store.openFile(data.doc, content, [])
+    activeCommentId.value = ''
+    commentBubble.value = null
+    mode.value = 'read'
+    saveStatus.value = 'saved'
+    await Promise.all([reloadComments(data.file_id), loadImageUrlMap(content)])
+    toast.show('已打开共享文档（只读）')
+  } finally {
+    navigating = false
+  }
+}
+
+// ---------------- 剪贴板 ----------------
+/** onShow 检查剪贴板：分享链接询问是否打开，普通文本询问是否追加到当前文档 */
+async function inspectClipboard() {
+  let clipboard
+  try {
+    clipboard = await import('@/common/utils/clipboard.js')
+  } catch (error) {
+    // 非 H5 构建或测试装载器不支持动态导入时静默降级，不影响主流程
+    return
+  }
+  const { readClipboard, parseShareUrl, getLastClipboard, setLastClipboard } = clipboard
+  const text = await readClipboard()
+  if (!text) {
+    clipboardReadFailed.value = true
+    return
+  }
+  clipboardReadFailed.value = false
+  if (text === getLastClipboard()) return
+  setLastClipboard(text)
+
+  const token = parseShareUrl(text)
+  if (token) {
+    const { verifyShare } = await import('@/common/api/mm-share.js')
+    const verified = await verifyShare({ token })
+    if (verified.code === 0 && verified.data && verified.data.valid) {
+      const agreed = await new Promise(resolve => {
+        uni.showModal({
+          title: '检测到分享链接',
+          content: '是否打开这份共享文档？',
+          success: res => resolve(!!res.confirm),
+          fail: () => resolve(false)
+        })
+      })
+      if (agreed) {
+        pendingShareToken.value = token
+        await resolveShare()
+      }
+    }
+    return
+  }
+  if (!store.state.currentFile || shareReadOnly.value) return
+  const enabled = uni.getStorageSync('mm_clipboard_append_enabled')
+  if (enabled === false) return
+  const agreed = await new Promise(resolve => {
+    uni.showModal({
+      title: '剪贴板内容',
+      content: '是否追加到当前文档末尾？',
+      success: res => resolve(!!res.confirm),
+      fail: () => resolve(false)
+    })
+  })
+  if (agreed) {
+    // 只改 store，让既有 watch 置 dirty，由用户用现有保存按钮提交
+    store.setEditor(`${store.state.editorContent}\n\n${text}`)
+    toast.show('已追加，请点击保存')
+  }
+}
+
+/** H5 显式读剪贴板仍失败时的最终兜底 */
+async function usePastedClipboard() {
+  const text = String(clipboardInputText.value || '').trim()
+  if (!text) return
+  if (store.state.currentFile && !shareReadOnly.value) {
+    store.setEditor(`${store.state.editorContent}\n\n${text}`)
+    toast.show('已追加，请点击保存')
+  }
+  const { setLastClipboard } = await import('@/common/utils/clipboard.js')
+  setLastClipboard(text)
+  clipboardInputVisible.value = false
+  clipboardInputText.value = ''
+  clipboardReadFailed.value = false
+}
+
+function handleLocateComment(payload) {
+  if (!payload) return
+  const commentId = payload._id || ''
+  const start = typeof payload.start_offset === 'number'
+    ? payload.start_offset
+    : (typeof payload.start === 'number' ? payload.start : 0)
+  if (commentId) activeCommentId.value = commentId
+  // 阅读器按 plainText 坐标滚动（mm-md-viewer 暴露 scrollToOffset）
+  const viewer = viewerRef.value
+  if (viewer && typeof viewer.scrollToOffset === 'function') viewer.scrollToOffset(start)
+}
+
+const viewerRef = ref(null)
+
+// ---------------- 搜索 / 回收站 / 图片 ----------------
+async function handleSearchSelect({ file_id, start_offset }) {
+  const res = await getContent({ file_id })
+  if (res.code === 0 && res.data) {
+    let content = res.data.content || ''
+    if (!content && res.data.tempUrl && typeof fetch === 'function') {
+      try {
+        const response = await fetch(res.data.tempUrl)
+        content = await response.text()
+      } catch (error) {
+        content = ''
+      }
+    }
+    store.openFile(res.data.doc, content, [])
+    await Promise.all([reloadComments(file_id), loadImageUrlMap(content)])
+    mode.value = 'read'
+    saveStatus.value = 'saved'
+    if (start_offset) {
+      setTimeout(() => handleLocateComment({ start: start_offset }), 120)
+    }
+  }
+}
+
+async function handleTrashChanged() {
+  await loadFiles(currentFolderId.value)
+  await loadTree()
+}
+
+function handleImageSelect({ fileId, name, tempUrl }) {
+  if (!fileId) return
+  // 记录 fileID → 临时 URL，供编辑器显示态渲染与保存时反替换
+  if (tempUrl) imageUrlMap.value = { ...imageUrlMap.value, [fileId]: tempUrl }
+  const editor = editorRef.value
+  if (editor && typeof editor.insertImage === 'function') {
+    editor.insertImage(fileId, name)
+  } else {
+    // 编辑器未就绪时退化为追加存储态 token
+    const token = `![${name || '图片'}](mm-image://${fileId})`
+    const current = store.state.editorContent
+    store.setEditor(`${current}${current ? '\n' : ''}${token}\n`)
+  }
+  toast.show('已插入图片')
+}
+
+/**
+ * 扫描存储态 mm-image://<fileID>，批量换取临时 URL 供显示。
+ * 存储态与显示态的转换只在渲染层发生，库与 plainText 始终基于存储态。
+ */
+async function loadImageUrlMap(content) {
+  imageUrlMap.value = await resolveImageUrlsForText(content)
+}
+
+// ---------------- 主题 / 设置 ----------------
+function cycleTheme() {
+  const order = ['auto', 'light', 'dark']
+  const index = order.indexOf(store.state.theme)
+  const next = order[(index + 1) % 3]
+  store.setTheme(next)
+  setStoredTheme(next)
+}
+
+function goSettings() {
+  uni.navigateTo({ url: '/pages/settings/settings' })
+}
+
+// ---------------- 通用输入弹层 ----------------
+const inputVisible = ref(false)
+const inputTitle = ref('')
+const inputPlaceholder = ref('')
+const inputValue = ref('')
+let inputResolve = null
+
+function openInput({ title, placeholder, value }) {
+  inputTitle.value = title || ''
+  inputPlaceholder.value = placeholder || ''
+  inputValue.value = value || ''
+  inputVisible.value = true
+  return new Promise((resolve) => {
+    inputResolve = resolve
+  })
+}
+
+function confirmInput() {
+  const value = String(inputValue.value || '').trim()
+  inputVisible.value = false
+  if (inputResolve) {
+    inputResolve(value)
+    inputResolve = null
+  }
+}
+
+function cancelInput() {
+  inputVisible.value = false
+  if (inputResolve) {
+    inputResolve('')
+    inputResolve = null
+  }
+}
+</script>
+
+<style scoped>
+.mm-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--mm-bg);
+  color: var(--mm-text);
+  /* 字号五档：正文用 em 相对单位，改这一处即可整体缩放 */
+  font-size: calc(16px * var(--mm-font-scale, 1));
+}
+
+/* 顶部栏 */
+.mm-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 48px;
+  padding: 0 14px;
+  flex: none;
+  border-bottom: 1px solid var(--mm-border);
+  background-color: var(--mm-surface);
+}
+
+.mm-topbar__left,
+.mm-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mm-topbar__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mm-text);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 保存状态光点：绿=已保存，黄=有改动/冲突，弱色=保存中 */
+.mm-topbar__status {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--mm-text-weak);
+}
+
+.mm-topbar__status.is-saved {
+  background-color: var(--mm-success);
+}
+
+.mm-topbar__status.is-dirty,
+.mm-topbar__status.is-conflict {
+  background-color: var(--mm-accent);
+}
+
+.mm-topbar__status.is-saving {
+  opacity: 0.5;
+}
+
+.mm-topbar__icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--mm-text);
+  cursor: pointer;
+}
+
+.mm-topbar__icon-btn:hover {
+  background-color: var(--mm-surface-2);
+}
+
+.mm-topbar__theme {
+  color: var(--mm-text-weak);
+}
+
+.mm-topbar__login {
+  padding: 0 8px;
+  color: var(--mm-accent);
+  font-weight: 500;
+}
+
+/* 手机端底部悬浮保存：仅在有未保存改动时淡入，层级高于正文、低于弹层 */
+.mm-save-fab {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(8px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.mm-save-fab.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 浮动「添加批注」：与保存按钮同层，靠右放置避免重叠 */
+.mm-add-annotation-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.mm-add-annotation-fab.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 批注气泡：fixed 定位绕开阅读器 overflow 裁切 */
+.mm-comment-bubble {
+  position: fixed;
+  z-index: 40;
+  width: 260px;
+  padding: 10px 12px;
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  background-color: var(--mm-surface);
+  box-shadow: var(--mm-shadow);
+  cursor: pointer;
+}
+
+.mm-comment-bubble__text {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--mm-text);
+}
+
+.mm-comment-bubble__more {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--mm-accent);
+}
+
+/* H5 剪贴板显式读取入口 */
+.mm-clipboard-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 68px;
+  z-index: 19;
+}
+
+/* 批注输入弹层里引用的原文片段 */
+.mm-dialog__quote {
+  display: block;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+  background-color: var(--mm-surface-2);
+  border-radius: 6px;
+}
+
+/* 分享有效期档位 */
+.mm-share__options {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.mm-share__option {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--mm-text-weak);
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mm-share__option.is-active {
+  color: var(--mm-accent);
+  border-color: var(--mm-accent);
+  background-color: var(--mm-accent-weak);
+}
+
+/* 全部批注弹窗 */
+.mm-comments-all {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--mm-surface);
+}
+
+.mm-comments-all__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--mm-border);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mm-comments-all__close {
+  padding: 4px;
+  cursor: pointer;
+}
+
+.mm-comments-all__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.mm-comments-all__item {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mm-border);
+  cursor: pointer;
+}
+
+.mm-comments-all__quote {
+  display: block;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+}
+
+.mm-comments-all__text {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--mm-text);
+}
+
+.mm-comments-all__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--mm-text-weak);
+}
+
+/* 主体三栏 */
+.mm-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.mm-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mm-pane--tree {
+  width: 260px;
+  flex: none;
+  border-right: 1px solid var(--mm-border);
+  background-color: var(--mm-surface);
+}
+
+.mm-pane--list {
+  width: 320px;
+  flex: none;
+  border-right: 1px solid var(--mm-border);
+  background-color: var(--mm-surface);
+}
+
+.mm-pane--main {
+  flex: 1;
+  min-width: 0;
+  background-color: var(--mm-bg);
+}
+
+/* 打开文档后：文档区与批注栏左右并排。
+   mm-annotation 自带 height:100% + flex-basis:auto，若留在 column 流中会吃光高度，
+   使 flex:1 的 .mm-content 被压成 0px，正文虽已渲染却被 overflow:auto 裁掉。 */
+.mm-pane--main.is-split {
+  flex-direction: row;
+}
+
+.mm-doc {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.mm-pane--main :deep(.mm-annotation-pane) {
+  flex: none;
+  width: 300px;
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--mm-border);
+}
+
+/* 窄屏回退为上下排布，批注栏限高，避免仍挤掉正文 */
+@media (max-width: 900px) {
+  /* 375px 顶栏：缩小间距与按钮尺寸，状态文字让位给 icon */
+  .mm-topbar {
+    gap: 6px;
+    padding: 0 10px;
+  }
+
+  .mm-topbar__left,
+  .mm-topbar__right {
+    gap: 4px;
+  }
+
+  .mm-topbar__icon-btn {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 2px;
+  }
+
+  .mm-topbar__title {
+    font-size: 13px;
+  }
+
+  /* 375px 编辑栏：只留图标，四个按钮必然全部放得下 */
+  .mm-mode {
+    padding: 0 8px;
+    gap: 4px;
+  }
+
+  .mm-mode__item {
+    padding: 3px 6px;
+    font-size: 11px;
+  }
+
+  .mm-mode__action {
+    padding: 3px 4px;
+    gap: 2px;
+  }
+
+  /* 只隐藏文字标签：uni-icons 在 H5 渲染为 <text class="uni-icons">，
+     用后代选择器 .mm-mode__action text 会把图标一起隐藏 */
+  .mm-mode__action-label {
+    display: none;
+  }
+
+  .mm-add-annotation-fab {
+    right: 16px;
+    bottom: 24px;
+  }
+
+  .mm-pane--main.is-split {
+    flex-direction: column;
+  }
+
+  .mm-pane--main :deep(.mm-annotation-pane) {
+    width: 100%;
+    height: auto;
+    max-height: 34%;
+    border-left: none;
+    border-top: 1px solid var(--mm-border);
+  }
+}
+
+.mm-pane__foot {
+  flex: none;
+  padding: 8px 12px;
+  border-top: 1px solid var(--mm-border);
+}
+
+.mm-pane__link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+  cursor: pointer;
+}
+
+/* 阅读 / 编辑切换 */
+.mm-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  flex: none;
+  border-bottom: 1px solid var(--mm-border);
+  background-color: var(--mm-surface);
+}
+
+.mm-mode__item {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.mm-mode__item.is-active {
+  color: var(--mm-accent);
+  background-color: var(--mm-accent-weak);
+}
+
+.mm-mode__spacer {
+  flex: 1;
+}
+
+.mm-mode__action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+  cursor: pointer;
+}
+
+.mm-mode__action:hover {
+  color: var(--mm-accent);
+  background-color: var(--mm-surface-2);
+}
+
+/* 预览开关的开启态：用色彩表达，不加说明性小字 */
+.mm-mode__action.is-active {
+  color: var(--mm-accent);
+  background-color: var(--mm-accent-weak);
+}
+
+.mm-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.mm-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 13px;
+  color: var(--mm-text-weak);
+  cursor: pointer;
+}
+
+/* 移动端抽屉 */
+.mm-drawer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--mm-surface);
+}
+
+/* 抽屉固定关闭入口：点击文件夹不再收起抽屉后，仍可明确关闭 */
+.mm-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--mm-border);
+}
+
+.mm-drawer__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mm-text);
+}
+
+.mm-drawer__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mm-drawer__close:hover {
+  background-color: var(--mm-surface-2);
+}
+
+.mm-drawer__tree {
+  flex: none;
+  max-height: 42%;
+  overflow: auto;
+  border-bottom: 1px solid var(--mm-border);
+  padding: 8px 0;
+}
+
+.mm-drawer__list {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 通用输入弹层 */
+.mm-dialog {
+  padding: 18px 16px;
+}
+
+.mm-dialog__title {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mm-text);
+}
+
+.mm-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* 移动到弹层 */
+.mm-move {
+  padding: 18px 16px 14px;
+}
+
+.mm-move__title {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mm-text);
+}
+
+/* 当前路径面包屑 + 返回上一级：用布局表达层级，不加说明性小字 */
+.mm-move__path {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--mm-text-weak);
+}
+
+.mm-move__crumb {
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mm-move__crumb:hover {
+  color: var(--mm-accent);
+  background-color: var(--mm-surface-2);
+}
+
+.mm-move__crumb.is-active {
+  color: var(--mm-accent);
+  font-weight: 600;
+}
+
+.mm-move__sep {
+  color: var(--mm-text-weak);
+}
+
+.mm-move__spacer {
+  flex: 1;
+}
+
+.mm-move__up {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.mm-move__up:hover {
+  color: var(--mm-accent);
+  background-color: var(--mm-surface-2);
+}
+
+.mm-move__body {
+  max-height: 46vh;
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+}
+
+.mm-move__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding-left: 12px;
+  padding-right: 10px;
+  font-size: 13px;
+  color: var(--mm-text);
+  cursor: pointer;
+}
+
+.mm-move__item:hover {
+  background-color: var(--mm-surface-2);
+}
+
+.mm-move__item.is-current {
+  color: var(--mm-accent);
+  background-color: var(--mm-accent-weak);
+}
+
+/* 置灰只代表「不能移动到此处」，仍可点击进入浏览其下级目录 */
+.mm-move__item.is-disabled {
+  color: var(--mm-text-weak);
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.mm-move__item.is-disabled:hover {
+  background-color: transparent;
+}
+
+.mm-move__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mm-move__reason {
+  flex: none;
+  font-size: 11px;
+  color: var(--mm-text-weak);
+}
+
+.mm-move__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+</style>

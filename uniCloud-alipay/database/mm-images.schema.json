@@ -1,0 +1,59 @@
+{
+  "bsonType": "object",
+  "required": ["file_id", "user_id", "name", "extension", "size", "cloud_path", "ref_count", "created_at", "updated_at"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "图片记录 ID，系统自动生成"
+    },
+    "file_id": {
+      "bsonType": "string",
+      "description": "云存储 fileID（唯一）；库中只存它，临时 URL 不落库"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "上传者"
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "原始文件名"
+    },
+    "extension": {
+      "bsonType": "string",
+      "description": "扩展名（png/jpg/...）"
+    },
+    "size": {
+      "bsonType": "int",
+      "description": "字节数，服务端写入",
+      "defaultValue": 0
+    },
+    "cloud_path": {
+      "bsonType": "string",
+      "description": "images/{user_id}/{uuid}.{ext}"
+    },
+    "ref_count": {
+      "bsonType": "int",
+      "description": "预留引用计数，本期写 0；图片不随文档级联删除",
+      "defaultValue": 0
+    },
+    "created_at": {
+      "bsonType": "timestamp",
+      "description": "服务器时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "updated_at": {
+      "bsonType": "timestamp",
+      "description": "服务器时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

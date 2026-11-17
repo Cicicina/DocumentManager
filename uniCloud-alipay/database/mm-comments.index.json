@@ -1,0 +1,30 @@
+[
+  {
+    "IndexName": "idx_file_status",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "file_id", "Direction": "1" },
+        { "Name": "status", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_user",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "user_id", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_created",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "created_at", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  }
+]

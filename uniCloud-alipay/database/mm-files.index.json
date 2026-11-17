@@ -1,0 +1,61 @@
+[
+  {
+    "IndexName": "idx_user_parent_del",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "user_id", "Direction": "1" },
+        { "Name": "parent_id", "Direction": "1" },
+        { "Name": "is_delete", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_parent_name",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "parent_id", "Direction": "1" },
+        { "Name": "name", "Direction": "1" },
+        { "Name": "is_delete", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_name",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "name", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_tags",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "tags", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_del",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "is_delete", "Direction": "1" },
+        { "Name": "deleted_at", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_updated",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "updated_at", "Direction": "-1" }
+      ],
+      "MgoIsUnique": false
+    }
+  }
+]

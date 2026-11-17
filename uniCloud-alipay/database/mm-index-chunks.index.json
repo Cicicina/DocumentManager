@@ -1,0 +1,39 @@
+[
+  {
+    "IndexName": "uidx_chunk_id",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "chunk_id", "Direction": "1" }
+      ],
+      "MgoIsUnique": true
+    }
+  },
+  {
+    "IndexName": "idx_file_rev",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "file_id", "Direction": "1" },
+        { "Name": "revision", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_file",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "file_id", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  },
+  {
+    "IndexName": "idx_keywords",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "keywords", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  }
+]

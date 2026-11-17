@@ -1,0 +1,11 @@
+[
+  {
+    "_id": "app_config",
+    "key": "app_config",
+    "account_enabled": true,
+    "permission_enabled": false,
+    "admin_user_id": "",
+    "updated_by": "",
+    "updated_at": { "$date": "2024-01-01T00:00:00.000Z" }
+  }
+]

@@ -1,0 +1,28 @@
+# 统一换行符：仓库内统一 LF，检出时由 git 按平台自动处理
+* text=auto
+
+# 明确二进制文件，避免被当作文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.pdf binary
+
+# 敏感值脱敏：写入 git 对象时把真实 serviceSpaceId 换成占位符，
+# 检出时经 smudge 还原，工作区始终保留可直接运行的本地配置。
+# 映射表见 .secrets/local.json（不进仓库），过滤器实现见 scripts/secret-filter.mjs。
+manifest.json filter=mm-secret
+common/constants.js filter=mm-secret
+
+# 文档与源码统一 LF
+*.js text eol=lf
+*.json text eol=lf
+*.vue text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.md text eol=lf

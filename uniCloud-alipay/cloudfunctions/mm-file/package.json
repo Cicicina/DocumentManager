@@ -1,0 +1,9 @@
+{
+  "name": "mm-file",
+  "version": "1.0.0",
+  "description": "MarkdownManager 文件 / 文件夹业务云对象：CRUD、上传落库、内容读写、保存（C1 版本冲突 + 索引重建 + 批注重定位）、软删还原彻底删除、标签、导入导出",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}

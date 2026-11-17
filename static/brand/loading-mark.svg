@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140" width="120" height="140" fill="none">
+  <!-- 首屏加载动画：文档轮廓线稿，描边与呼吸交替，单色无文案 -->
+  <style>
+    .mm-line {
+      stroke: #3A6EA5;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 420;
+      stroke-dashoffset: 420;
+      animation: mm-draw 2.4s ease-in-out infinite;
+    }
+    .mm-text {
+      stroke: #3A6EA5;
+      stroke-width: 2;
+      stroke-linecap: round;
+      animation: mm-breathe 2.4s ease-in-out infinite;
+    }
+    @keyframes mm-draw {
+      0% { stroke-dashoffset: 420; }
+      45%, 72% { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: 420; }
+    }
+    @keyframes mm-breathe {
+      0%, 100% { opacity: .18; }
+      50% { opacity: .78; }
+    }
+  </style>
+  <path class="mm-line" d="M24 10h50l22 22v98H24z"/>
+  <path class="mm-line" d="M74 10v22h22"/>
+  <path class="mm-text" d="M38 56h44M38 70h44M38 84h30"/>
+</svg>

@@ -1,0 +1,9 @@
+{
+  "name": "mm-settings",
+  "version": "1.0.0",
+  "description": "MarkdownManager 配置云对象：账号 / 权限开关、用户数校验、首个管理员、用户权限分配",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}

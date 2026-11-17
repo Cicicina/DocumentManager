@@ -1,0 +1,21 @@
+[
+  {
+    "IndexName": "uidx_file_id",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "file_id", "Direction": "1" }
+      ],
+      "MgoIsUnique": true
+    }
+  },
+  {
+    "IndexName": "idx_user",
+    "MgoKeySchema": {
+      "MgoIndexKeys": [
+        { "Name": "user_id", "Direction": "1" },
+        { "Name": "created_at", "Direction": "1" }
+      ],
+      "MgoIsUnique": false
+    }
+  }
+]

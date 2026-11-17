@@ -1,0 +1,9 @@
+{
+  "name": "mm-image",
+  "version": "1.0.0",
+  "description": "MarkdownManager 图片云对象：图片登记（幂等）、图片空间列表、临时 URL、图片清理",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}

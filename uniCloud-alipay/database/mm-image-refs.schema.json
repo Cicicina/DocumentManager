@@ -1,0 +1,30 @@
+{
+  "bsonType": "object",
+  "required": ["image_file_id", "doc_id", "created_at"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "引用记录 ID，系统自动生成"
+    },
+    "image_file_id": {
+      "bsonType": "string",
+      "description": "图片云存储 fileID（与正文 mm-image://<fileID> 中的 fileID 一致，不是 mm-images._id）"
+    },
+    "doc_id": {
+      "bsonType": "string",
+      "description": "引用该图片的文档 mm-files._id"
+    },
+    "created_at": {
+      "bsonType": "timestamp",
+      "description": "服务器时间",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

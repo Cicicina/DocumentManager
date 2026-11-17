@@ -1,0 +1,109 @@
+{
+  "bsonType": "object",
+  "required": ["type", "user_id", "parent_id", "name", "extension", "size", "content_hash", "tags", "created_at", "version", "updated_at", "is_delete"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "文件/文件夹唯一 ID，系统自动生成"
+    },
+    "type": {
+      "bsonType": "string",
+      "description": "file 文档 / folder 文件夹，自关联 parent_id 构成嵌套目录",
+      "enum": ["file", "folder"],
+      "defaultValue": "file"
+    },
+    "user_id": {
+      "bsonType": "string",
+      "description": "所属用户；账号功能关闭时固定为 __anonymous__"
+    },
+    "parent_id": {
+      "bsonType": "string",
+      "description": "父目录 ID，根目录为空串，可无限嵌套",
+      "defaultValue": ""
+    },
+    "name": {
+      "bsonType": "string",
+      "description": "文件名/文件夹名（含扩展名）；同目录重名追加 -copyN"
+    },
+    "extension": {
+      "bsonType": "string",
+      "description": "扩展名，本期默认 md，预留后续格式",
+      "defaultValue": "md"
+    },
+    "storage_key": {
+      "bsonType": "string",
+      "description": "云存储 fileID；文件夹为空串",
+      "defaultValue": ""
+    },
+    "size": {
+      "bsonType": "int",
+      "description": "文件字节数，上传写入、每次编辑保存由服务端重算",
+      "defaultValue": 0
+    },
+    "content_hash": {
+      "bsonType": "string",
+      "description": "内容 SHA-256，服务端重算",
+      "defaultValue": ""
+    },
+    "tags": {
+      "bsonType": "array",
+      "description": "标签，支持标签搜索",
+      "items": {
+        "bsonType": "string",
+        "description": "标签文本"
+      },
+      "defaultValue": []
+    },
+    "icon": {
+      "bsonType": "object",
+      "description": "文件夹图标 {type: preset|custom, value: 预制图标 key 或云存储 fileID}",
+      "properties": {
+        "type": {
+          "bsonType": "string",
+          "description": "preset 预制 / custom 自定义上传",
+          "enum": ["preset", "custom"]
+        },
+        "value": {
+          "bsonType": "string",
+          "description": "预制图标 key 或云存储 fileID"
+        }
+      }
+    },
+    "created_at": {
+      "bsonType": "timestamp",
+      "description": "创建时间，服务器时间，不可修改",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "version": {
+      "bsonType": "int",
+      "description": "乐观锁版本，初始 0，每次成功保存 +1",
+      "defaultValue": 0
+    },
+    "updated_at": {
+      "bsonType": "timestamp",
+      "description": "每次成功保存后由服务端更新",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    },
+    "is_delete": {
+      "bsonType": "bool",
+      "description": "删除二态；true 进回收站可还原",
+      "defaultValue": false
+    },
+    "deleted_at": {
+      "bsonType": "timestamp",
+      "description": "进回收站时间；还原时由云对象显式置 null",
+      "forceDefaultValue": {
+        "$env": "now"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "mm-common",
+  "version": "1.0.0",
+  "description": "MarkdownManager 云侧公共模块：常量、错误、鉴权、时间、哈希、重名、提纯、分块、批注定位与数据库助手",
+  "main": "index.js",
+  "dependencies": {
+    "uni-id-common": "file:../../../../uni_modules/uni-id-common/uniCloud/cloudfunctions/common/uni-id-common"
+  },
+  "license": "ISC"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "mm-share",
+  "version": "1.0.0",
+  "description": "MarkdownManager 文档分享云对象：创建只读分享令牌、校验令牌、凭令牌读取正文快照（不返回写授权）",
+  "dependencies": {
+    "mm-common": "file:../common/mm-common"
+  },
+  "license": "ISC"
+}
