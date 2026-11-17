@@ -29,6 +29,20 @@
       }
     },
     {
+      "path": "pages/trash/trash",
+      "style": {
+        "navigationBarTitleText": "回收站",
+        "enablePullDownRefresh": false
+      }
+    },
+    {
+      "path": "pages/image-space/image-space",
+      "style": {
+        "navigationBarTitleText": "图片空间",
+        "enablePullDownRefresh": false
+      }
+    },
+    {
       "path": "uni_modules/uni-id-pages/pages/register/register",
       "style": {
         "navigationBarTitleText": "注册"

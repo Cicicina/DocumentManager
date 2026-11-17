@@ -174,7 +174,7 @@
           @change-icon-root="handleChangeIconRoot"
         />
         <view class="mm-pane__foot">
-          <view class="mm-pane__link mm-pane__link--inset" @click="trashVisible = true">
+          <view class="mm-pane__link mm-pane__link--inset" @click="goTrash">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
             <text>回收站</text>
           </view>
@@ -343,7 +343,7 @@
             @rename-root="handleRenameRoot"
             @change-icon-root="handleChangeIconRoot"
           />
-          <view class="mm-pane__link mm-pane__link--inset" @click="drawerVisible = false; trashVisible = true">
+          <view class="mm-pane__link mm-pane__link--inset" @click="drawerVisible = false; goTrash()">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
             <text>回收站</text>
           </view>
@@ -435,7 +435,6 @@
       @confirm="handleIconConfirm"
     />
     <mm-search-panel v-model:visible="searchVisible" @select="handleSearchSelect" />
-    <mm-trash v-model:visible="trashVisible" @changed="handleTrashChanged" />
     <mm-conflict-modal
       v-model:visible="conflictVisible"
       :cloud-version="conflict.cloudVersion"
@@ -621,7 +620,6 @@ function toggleEditorPreview() {
   }
 }
 const searchVisible = ref(false)
-const trashVisible = ref(false)
 const imagePickerVisible = ref(false)
 const iconPickerVisible = ref(false)
 const iconPickerCurrent = ref(null)
@@ -905,7 +903,13 @@ onLoad((options) => {
 })
 
 // 登录页返回时重新同步身份并补拉数据（守卫只在配置就绪后执行一次）
+let libraryListenerBound = false
 onShow(() => {
+  // 回收站独立页在页面栈中 emit，首页虽不在前台但实例仍在，注册一次即可持续接收
+  if (!libraryListenerBound && typeof uni.$on === 'function') {
+    uni.$on('mm-library-changed', handleTrashChanged)
+    libraryListenerBound = true
+  }
   if (!store.state.ready) return
   const token = uni.getStorageSync('uni_id_token')
   // 分享链接与剪贴板不依赖登录态，先处理（匿名分享也能打开）
@@ -2271,6 +2275,10 @@ async function handleTrashChanged() {
   await loadTree()
 }
 
+function goTrash() {
+  uni.navigateTo({ url: '/pages/trash/trash' })
+}
+
 async function handleImageSelect({ fileId, name, tempUrl }) {
   if (!fileId) return
   // 记录 fileID → 临时 URL，供编辑器显示态渲染与保存时反替换
@@ -2366,8 +2374,6 @@ const POPUPS = [
   { name: 'allComments', flag: allCommentsVisible },
   { name: 'commentDialog', flag: commentDialogVisible },
   { name: 'share', flag: shareVisible },
-  { name: 'search', flag: searchVisible },
-  { name: 'trash', flag: trashVisible },
   { name: 'imagePicker', flag: imagePickerVisible },
   { name: 'iconPicker', flag: iconPickerVisible },
   { name: 'move', flag: moveVisible },

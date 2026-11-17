@@ -13,7 +13,7 @@
 
       <!-- 其他入口 -->
       <view class="mm-settings-page__section">
-        <view class="mm-settings-page__row" @click="trashVisible = true">
+        <view class="mm-settings-page__row" @click="goTrash">
           <text class="mm-settings-page__label">回收站</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
@@ -21,7 +21,7 @@
           <text class="mm-settings-page__label">分享管理</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
-        <view class="mm-settings-page__row" @click="openImageSpace">
+        <view class="mm-settings-page__row" @click="goImageSpace">
           <text class="mm-settings-page__label">图片空间</text>
           <uni-icons type="right" size="14" color="var(--mm-text-weak)" />
         </view>
@@ -57,53 +57,6 @@
 
     </view>
 
-    <!-- 回收站 -->
-    <mm-trash v-model:visible="trashVisible" @changed="noop" />
-
-    <!-- 图片空间：列表 / 预览 / 单独清理 -->
-    <wd-popup v-model="imageSpaceVisible" position="bottom" custom-style="height:72vh;border-radius:12px 12px 0 0;">
-      <view class="mm-image-space">
-        <view class="mm-image-space__head">
-          <text class="mm-image-space__title">图片空间</text>
-          <view class="mm-image-space__close" @click="imageSpaceVisible = false">
-            <uni-icons type="closeempty" size="18" color="var(--mm-text-weak)" />
-          </view>
-        </view>
-        <text class="mm-image-space__tip">按住图片拖动可调整顺序，越靠前越优先插入文档</text>
-        <scroll-view class="mm-image-space__body" scroll-y>
-          <view v-if="imageLoading" class="mm-image-space__status"><wd-loading size="20px" /></view>
-          <view v-else-if="imageList.length === 0" class="mm-image-space__status"><text>还没有图片</text></view>
-          <view v-else class="mm-image-space__grid">
-            <view
-              v-for="(item, index) in imageList"
-              :key="item._id"
-              class="mm-image-space__item"
-              :class="{ 'is-dragging': draggingId === item._id }"
-              :data-drag-index="index"
-              :title="imageTitle(item)"
-              @pointerdown="startDrag($event, item, index)"
-            >
-              <image
-                v-if="imageUrls[item.file_id]"
-                class="mm-image-space__img"
-                :src="imageUrls[item.file_id]"
-                mode="aspectFill"
-              />
-              <view v-else class="mm-image-space__placeholder">
-                <uni-icons type="image" size="18" color="var(--mm-text-weak)" />
-              </view>
-              <text v-if="item.ref_count > 0" class="mm-image-space__refs">{{ item.ref_count }} 引用</text>
-              <view class="mm-image-space__remove" @pointerdown.stop="noop" @click="removeImage(item)">
-                <uni-icons type="trash" size="12" color="var(--mm-text)" />
-              </view>
-              <!-- 大小 + 上传者：尺寸/来源一眼可见，不必依赖悬浮 title -->
-              <text class="mm-image-space__size">{{ formatSize(item.size) }} · {{ item.uploader_nickname || '访客' }}</text>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-    </wd-popup>
-
     <!-- 轻提示挂载点（必需） -->
     <wd-toast />
   </view>
@@ -122,41 +75,12 @@ import { useAppStore } from '@/common/store/index.js'
 import { ANONYMOUS_USER_ID } from '@/common/constants.js'
 import { setStoredTheme } from '@/common/utils/theme.js'
 import { FONT_OPTIONS, getStoredFont, setStoredFont } from '@/common/utils/font.js'
-import { formatSize } from '@/common/utils/format.js'
 import { getConfig, updateConfig, listUsers, setUserPermission } from '@/common/api/mm-settings.js'
-import { list as listImages, getTempUrls, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
-import { useImageDragSort } from '@/common/utils/drag-order.js'
 
 const store = useAppStore()
 
 const users = ref([])
 const usersLoading = ref(false)
-const trashVisible = ref(false)
-const imageSpaceVisible = ref(false)
-const imageList = ref([])
-const imageUrls = ref({})
-const imageLoading = ref(false)
-
-/**
- * 拖动排序：order 越大越靠前，所以松手后按「数组长度 - 下标」重新编号，
- * 既保持当前可见顺序，又能让新上传的图（服务端取 max+1）继续排在最前。
- */
-const { draggingId, startDrag } = useImageDragSort(
-  () => imageList.value,
-  next => { imageList.value = next },
-  async (items) => {
-    if (items.length === 0) return
-    const total = items.length
-    const payload = items.map((item, index) => ({ image_id: item._id, order: total - index }))
-    const res = await reorderImages({ items: payload })
-    if (res.code === 0) {
-      imageList.value = items.map((item, index) => ({ ...item, order: total - index }))
-      uni.showToast({ title: '顺序已保存', icon: 'none' })
-    } else {
-      await loadImages()
-    }
-  }
-)
 
 /** 本地交互偏好：允许读取剪贴板并询问是否追加到当前文档（默认开启） */
 const clipboardAppendEnabled = ref(uni.getStorageSync('mm_clipboard_append_enabled') !== false)
@@ -220,74 +144,16 @@ async function handleUpdatePermission(payload) {
   if (res.code === 0) await loadUsers()
 }
 
+function goTrash() {
+  uni.navigateTo({ url: '/pages/trash/trash' })
+}
+
 function openShareList() {
   uni.navigateTo({ url: '/pages/share-list/share-list' })
 }
 
-async function openImageSpace() {
-  imageSpaceVisible.value = true
-  await loadImages()
-}
-
-async function loadImages() {
-  imageLoading.value = true
-  const res = await listImages({ page: 1, pageSize: 60 })
-  if (res.code === 0 && res.data) {
-    imageList.value = res.data.list || []
-    const ids = imageList.value.map(item => item.file_id).filter(Boolean)
-    if (ids.length > 0) {
-      const urlRes = await getTempUrls({ file_ids: ids })
-      if (urlRes.code === 0 && urlRes.data) imageUrls.value = urlRes.data
-    }
-  }
-  imageLoading.value = false
-}
-
-/** 图片卡片的悬浮提示：上传者 + 上传日期 */
-function imageTitle(item) {
-  if (!item) return ''
-  const uploader = item.uploader_nickname || '未知'
-  const created = item.created_at ? new Date(item.created_at) : null
-  const valid = created && !Number.isNaN(created.getTime())
-  const time = valid
-    ? `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`
-    : ''
-  return time ? `上传者：${uploader} · 上传于 ${time}` : `上传者：${uploader}`
-}
-
-/**
- * 清理图片：未被文档引用时直接删除，不打扰用户；
- * 只有被引用（4011）才弹确认框并列出引用文档，确认后带 force 级联清理。
- */
-async function removeImage(item) {
-  const first = await removeSilent({ image_ids: [item._id] })
-  if (first.code === 0) {
-    uni.showToast({ title: '已清理', icon: 'none' })
-    await loadImages()
-    return
-  }
-  if (first.code !== 4011) return
-
-  const info = (first.data && first.data.refs && first.data.refs[0]) || {}
-  const names = (info.docs || []).map(doc => doc && doc.name).filter(Boolean)
-  const count = Number(info.ref_count) || names.length
-  const quoted = names.length > 0 ? `《${names.join('、')}》` : ''
-  const suffix = count > names.length ? ` 等 ${count} 篇` : ''
-
-  uni.showModal({
-    title: '图片被文档引用',
-    content: `该图片被${quoted}${suffix}引用，删除会导致文档中的图片无法显示。是否仍要删除？`,
-    confirmText: '仍要删除',
-    confirmColor: '#e54d42',
-    success: async (res) => {
-      if (!res.confirm) return
-      const second = await removeImages({ image_ids: [item._id], force: true })
-      if (second.code === 0) {
-        uni.showToast({ title: '已清理', icon: 'none' })
-        await loadImages()
-      }
-    }
-  })
+function goImageSpace() {
+  uni.navigateTo({ url: '/pages/image-space/image-space' })
 }
 
 function pickTheme(key) {
@@ -295,9 +161,6 @@ function pickTheme(key) {
   setStoredTheme(key)
 }
 
-function noop() {
-  // mm-trash 的 changed 事件在设置页仅用于占位，列表刷新由组件内部完成
-}
 </script>
 
 <style scoped>
@@ -356,133 +219,4 @@ function noop() {
   background-color: var(--mm-accent-weak);
 }
 
-/* 图片空间 */
-.mm-image-space {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background-color: var(--mm-surface);
-}
-
-.mm-image-space__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: calc(14px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
-  border-bottom: 1px solid var(--mm-border);
-}
-
-.mm-image-space__title {
-  font-size: calc(14px * var(--mm-ui-scale, 1));
-  font-weight: 600;
-  color: var(--mm-text);
-}
-
-.mm-image-space__tip {
-  flex: none;
-  padding: calc(6px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
-  font-size: calc(11px * var(--mm-ui-scale, 1));
-  line-height: 1.5;
-  color: var(--mm-text-weak);
-}
-
-.mm-image-space__close {
-  padding: calc(4px * var(--mm-ui-scale, 1));
-  cursor: pointer;
-}
-
-.mm-image-space__body {
-  flex: 1;
-  min-height: 0;
-}
-
-.mm-image-space__status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: calc(48px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1));
-  font-size: calc(13px * var(--mm-ui-scale, 1));
-  color: var(--mm-text-weak);
-}
-
-.mm-image-space__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: calc(10px * var(--mm-ui-scale, 1));
-  padding: calc(12px * var(--mm-ui-scale, 1)) calc(16px * var(--mm-ui-scale, 1)) calc(24px * var(--mm-ui-scale, 1));
-}
-
-.mm-image-space__item {
-  position: relative;
-  height: calc(96px * var(--mm-ui-scale, 1));
-  border: 1px solid var(--mm-border);
-  border-radius: 8px;
-  overflow: hidden;
-  background-color: var(--mm-surface-2);
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-.mm-image-space__item.is-dragging {
-  opacity: 0.45;
-  border-color: var(--mm-accent);
-  cursor: grabbing;
-}
-
-/* 引用次数角标：放左上角，避开右上角的删除按钮 */
-.mm-image-space__refs {
-  position: absolute;
-  top: 4px;
-  left: 4px;
-  padding: calc(1px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
-  font-size: calc(10px * var(--mm-ui-scale, 1));
-  line-height: calc(14px * var(--mm-ui-scale, 1));
-  color: var(--mm-bg);
-  background-color: var(--mm-accent);
-  border-radius: 7px;
-}
-
-/* 文件大小：压在卡片底部，半透明底保证在图片上可读 */
-.mm-image-space__size {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: calc(2px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
-  font-size: calc(10px * var(--mm-ui-scale, 1));
-  line-height: calc(14px * var(--mm-ui-scale, 1));
-  color: var(--mm-text);
-  background-color: var(--mm-surface);
-  opacity: .9;
-  text-align: center;
-}
-
-.mm-image-space__img {
-  width: 100%;
-  height: 100%;
-}
-
-.mm-image-space__placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.mm-image-space__remove {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: calc(22px * var(--mm-ui-scale, 1));
-  border-radius: 11px;
-  background-color: var(--mm-surface);
-  border: 1px solid var(--mm-border);
-  cursor: pointer;
-}
 </style>
