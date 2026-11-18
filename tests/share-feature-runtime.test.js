@@ -397,7 +397,7 @@ test('第7项 create：令牌碰撞时重生，连续碰撞超过上限报 4009'
   }
 })
 
-test('第7项 open：只读返回正文，不返回任何写授权字段', async () => {
+test('第7项 open：返回正文；除 can_edit 提示外不返回任何写授权字段', async () => {
   const mock = createShareEnv()
   const doc = seedShareDoc(mock)
   seedShare(mock, { token: 'ValidToken1234567890', doc_id: doc._id })
@@ -409,6 +409,9 @@ test('第7项 open：只读返回正文，不返回任何写授权字段', async
   assert.equal(res.data.content, CONTENT)
   assert.equal(res.data.source, 'download')
   assert.equal(res.data.file_id, doc._id)
+
+  // can_edit 是按访问者权限算出的 UI 提示（布尔），不构成写授权
+  assert.equal(typeof res.data.can_edit, 'boolean')
 
   // 不得出现任何写授权 / 权限提升字段
   for (const field of ['canWrite', 'can_write', 'permissions', 'role', 'uid', 'write']) {

@@ -2278,16 +2278,19 @@ async function resolveShare() {
         content = ''
       }
     }
-    shareReadOnly.value = true
+    // 是否可编辑由云端按访问者在文档库的写权限判定（账号关闭匿名直通；
+    // 账号开启则按 管理员/归属/权限位 判定），前端不自行推断，服务端保存仍独立鉴权。
+    const editable = data.can_edit === true
+    shareReadOnly.value = !editable
     store.openFile(data.doc, content, [])
     activeCommentId.value = ''
-    mode.value = 'read'
+    mode.value = editable ? 'edit' : 'read'
     saveStatus.value = 'saved'
     activeOutlineIndex.value = -1
     scrollHost = null
     nextTick(measureScroll)
     await Promise.all([reloadComments(data.file_id), loadImageUrlMap(content)])
-    toast.show('已打开共享文档（只读）')
+    toast.show(editable ? '已打开共享文档（可编辑）' : '已打开共享文档（只读）')
     // 只跳这一次：把 token 从地址栏移除，刷新或再次进入都不再重复跳转
     clearShareTokenFromUrl()
   } finally {

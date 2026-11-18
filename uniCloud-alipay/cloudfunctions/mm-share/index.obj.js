@@ -3,7 +3,9 @@
  *
  * - create：仅文档所有者 / 有写权限者可创建，生成 base64url 令牌写入 mm-shares；
  * - verify：免登录，只校验令牌状态，不读正文；
- * - open：凭令牌返回正文快照，**只读，绝不返回任何写授权**；
+ * - open：凭令牌返回正文快照，并按访问者在文档库的写权限返回 can_edit 提示。
+ *   can_edit 只用于前端决定是否展示编辑入口，**不构成任何写授权**：真正的保存
+ *   仍由 mm-file.saveContent 的 assertWritable 独立鉴权，口径与 canWrite 一致。
  *   账号模式开启且未登录仍返回 1002，由前端引导登录后重试。
  *
  * 出参统一 {errCode, errMsg, data}，与 mm-file 保持同一约定。
@@ -260,7 +262,8 @@ module.exports = {
   },
 
   /**
-   * 凭令牌只读打开文档（不返回写授权）。
+   * 凭令牌打开文档。正文始终返回；can_edit 仅按访问者在文档库的写权限计算，
+   * 供前端决定是否允许编辑，不构成写授权（保存由 mm-file 独立鉴权）。
    * @param {{token:string}} param
    */
   async open(param) {
@@ -299,7 +302,10 @@ module.exports = {
         source: readSource,
         error: readError,
         expire_at: share.expire_at,
-        infinite: isInfinite(share)
+        infinite: isInfinite(share),
+        // 是否允许编辑：与 mm-file.canAccess(ctx, doc, 'write') 同口径。
+        // 匿名（账号功能关闭）直通；否则按管理员 / 归属 / 权限位判定。
+        can_edit: canWrite(ctx, doc)
       }
     })
   },
