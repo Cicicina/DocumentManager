@@ -53,7 +53,14 @@
             size="15px"
             color="var(--mm-text-weak)"
           />
-          <uni-icons v-else type="folder" size="15" color="var(--mm-text-weak)" />
+          <!-- 无自定义图标时回退到内置 folder-default.svg：uni-icons 没有 folder 这个 key（只有 folder-add），
+               用 type="folder" 会渲染成空白，导致普通文件夹左侧看不到图标 -->
+          <image
+            v-else
+            class="mm-list__folder-img"
+            :src="`/static/icons/folder-default.svg`"
+            mode="aspectFit"
+          />
         </view>
         <view class="mm-list__main">
           <text class="mm-list__name">{{ folder.name }}</text>
@@ -321,13 +328,14 @@ defineExpose({ clearSelection })
   background-color: var(--mm-surface-2);
 }
 
+/* 与 .mm-list__check 复选框等宽等高（15px，border-box），保证文件夹图标与复选框在同一列对齐 */
 .mm-list__folder-icon {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 17px;
-  height: calc(17px * var(--mm-ui-scale, 1));
+  width: 15px;
+  height: calc(15px * var(--mm-ui-scale, 1));
 }
 
 .mm-list__folder-img {
