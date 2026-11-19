@@ -2941,7 +2941,12 @@ for (const item of POPUPS) {
   .mm-mode {
     padding: calc(3px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
     gap: calc(4px * var(--mm-ui-scale, 1));
-    row-gap: calc(2px * var(--mm-ui-scale, 1));
+  }
+
+  /* 手机端不再用 spacer 把模式按钮和动作按钮推开（窄屏白白占宽导致换行）；
+     改为收紧间距，让 切换 + 大纲/分享/图片/预览 尽量同屏一行 */
+  .mm-mode__spacer {
+    display: none;
   }
 
   /* 手机端收紧每个动作按钮的内边距，保证切换按钮 + 大纲/分享/图片/预览 同屏一行 */
@@ -3011,17 +3016,31 @@ for (const item of POPUPS) {
 }
 
 /* 阅读 / 编辑合并为单个切换按钮（.mm-mode__switch），旧的 .mm-mode__item 已移除 */
+/*
+ * 文档操作栏：始终单行。
+ * 之前用 flex-wrap: wrap 允许换行，窄屏上「阅读编辑切换 + 大纲 + 分享 + 图片 + 预览」
+ * 会被挤成 2~3 行，预览掉到下一行。改为 nowrap + 横向滚动：
+ * 所有按钮保持在同一行，放不下时可横滑（按钮不隐藏、不堆叠）。
+ */
 .mm-mode {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
   gap: calc(6px * var(--mm-ui-scale, 1));
-  row-gap: calc(2px * var(--mm-ui-scale, 1));
   min-height: calc(38px * var(--mm-ui-scale, 1));
   padding: calc(4px * var(--mm-ui-scale, 1)) calc(14px * var(--mm-ui-scale, 1));
   flex: none;
   border-bottom: 1px solid var(--mm-border);
   background-color: var(--mm-surface);
+}
+
+/* 单行栏内各按钮不允许被压缩变形，放不下交给横向滚动 */
+.mm-mode__switch,
+.mm-mode__action,
+.mm-mode__spacer {
+  flex: none;
 }
 
 /* 阅读 / 编辑合并按钮：文字 + icon，突出当前模式，单击切换 */

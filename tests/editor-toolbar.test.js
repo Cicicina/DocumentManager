@@ -50,6 +50,28 @@ test('index.vue：图片按钮文案为「图片」，阅读/编辑合并为单�
   assert.match(func, /mode\.value = mode\.value === 'read' \? 'edit' : 'read'/, 'read/edit 互切')
 })
 
+test('index.vue：文档操作栏始终单行（nowrap），手机端隐藏 spacer', () => {
+  const src = readText('pages/index/index.vue')
+  // 定位 .mm-mode 基础样式块：它带有 flex-wrap: nowrap（@media 里的同名块不带）
+  const cssStart = src.indexOf('.mm-mode {')
+  assert.notEqual(cssStart, -1, '应存在 .mm-mode 样式块')
+  // 从所有 .mm-mode { 候选中找到含 flex-wrap 的基础块
+  const candidates = [...src.matchAll(/\.mm-mode \{/g)].map(m => m.index)
+  const baseStart = candidates.find(i => src.slice(i, i + 300).includes('flex-wrap'))
+  assert.notEqual(baseStart, undefined, '应存在带 flex-wrap 的 .mm-mode 基础样式块')
+  const cssBlock = src.slice(baseStart, src.indexOf('\n}', baseStart) + 2)
+  assert.match(cssBlock, /flex-wrap: nowrap/, '文档操作栏不换行（所有按钮保持同一行）')
+  assert.doesNotMatch(cssBlock, /flex-wrap: wrap/, '不得允许换行，否则预览会被挤到第二行/多行')
+  assert.match(cssBlock, /overflow-x: auto/, '放不下时横向滚动，按钮不隐藏')
+
+  // 手机媒体查询里隐藏 spacer（窄屏白白占宽导致换行）
+  const mediaStart = src.indexOf('@media')
+  const mediaBlock = src.slice(mediaStart)
+  const spacerRule = mediaBlock.match(/\.mm-mode__spacer\s*\{[^}]*\}/)
+  assert.ok(spacerRule, '手机端应有 .mm-mode__spacer 规则')
+  assert.match(spacerRule[0], /display: none/, '手机端隐藏 spacer')
+})
+
 // ---------------------------------------------------------------------------
 // 工具栏顺序工具
 // ---------------------------------------------------------------------------
