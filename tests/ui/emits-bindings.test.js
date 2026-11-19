@@ -172,7 +172,17 @@ test('三条 P0 链路的组件事件在 PC 与抽屉两处都已绑定（防单
   const pcRegions = page.slice(0, drawerStart)
   const drawerRegion = page.slice(drawerStart, popupEnd)
 
+  // PC 仍是「文件夹树 + 文件列表」两栏；移动端抽屉已合并为单个 mm-directory
   for (const [label, region] of [['PC 三栏', pcRegions], ['移动端抽屉', drawerRegion]]) {
+    if (label === '移动端抽屉') {
+      const mergedUsage = usagesIn(region).filter(usage => usage.tag === 'mm-directory')
+      assert.equal(mergedUsage.length, 1, '移动端抽屉应只有一个合并目录组件')
+      for (const event of ['rename', 'move', 'export']) {
+        assert.ok(mergedUsage[0].bound.has(event), `移动端抽屉的 mm-directory 缺少 @${event} 绑定`)
+      }
+      continue
+    }
+
     const listUsage = usagesIn(region).filter(usage => usage.tag === 'mm-file-list')
     const treeUsage = usagesIn(region).filter(usage => usage.tag === 'mm-folder-tree')
     assert.ok(listUsage.length >= 1, `${label} 应包含 mm-file-list`)

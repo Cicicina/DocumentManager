@@ -350,43 +350,40 @@
             <uni-icons type="close" size="16" color="var(--mm-text-weak)" />
           </view>
         </view>
-        <view class="mm-drawer__tree">
-          <mm-folder-tree
+        <view class="mm-drawer__body">
+          <mm-directory
             :folders="store.state.tree"
+            :files-by-folder="directoryFiles"
+            :expanded="directoryExpanded"
+            :sort="directorySort"
             :current-id="currentFolderId"
-            :loading="treeLoading"
+            :loading="treeLoading || fileLoading"
             :root-name="rootName"
             :root-icon="rootIcon"
             @select="handleDrawerFolderSelect"
+            @open="handleDrawerOpenFile"
+            @toggle-folder="handleToggleDirectoryFolder"
+            @sort-change="handleDirectorySort"
+            @create-file="handleCreateFile"
+            @upload="handleUpload"
+            @import="handleImport"
             @create="handleCreateFolder"
-            @rename="handleRenameFolder"
-            @move="handleMoveFolder"
-            @remove="handleRemoveFolder"
+            @folder-rename="handleRenameFolder"
+            @folder-move="handleMoveFolder"
+            @folder-remove="handleRemoveFolder"
+            @rename="handleRenameFile"
+            @move="handleMoveFile"
             @change-icon="handleChangeIcon"
             @rename-root="handleRenameRoot"
             @change-icon-root="handleChangeIconRoot"
+            @export="handleExport"
+            @share="handleShare"
+            @batch-delete="handleBatchDelete"
           />
           <view class="mm-pane__link mm-pane__link--inset" @click="drawerVisible = false; goTrash()">
             <uni-icons type="trash" size="14" color="var(--mm-text-weak)" />
             <text>回收站</text>
           </view>
-        </view>
-        <view class="mm-drawer__list">
-          <mm-file-list
-            :files="store.state.files"
-            :folders="currentChildFolders"
-            :loading="fileLoading"
-            @open="handleDrawerOpenFile"
-            @open-folder="handleDrawerFolderSelect"
-            @create-file="handleCreateFile"
-            @upload="handleUpload"
-            @import="handleImport"
-            @rename="handleRenameFile"
-            @move="handleMoveFile"
-            @export="handleExport"
-            @share="handleShare"
-            @batch-delete="handleBatchDelete"
-          />
         </view>
       </view>
     </wd-popup>
@@ -539,6 +536,13 @@ import { getMmText } from '@/common/utils/selection.js'
 // 注意：该文件采用同构双挂载、没有 export，不能写成命名导入，否则模块加载失败。
 import '@/common/utils/comment-paragraph.js'
 import { downloadMarkdown } from '@/common/utils/download.js'
+import {
+  loadDirectoryCache,
+  saveDirectoryCache,
+  folderListsEqual,
+  fileListsEqual,
+  stripTransient
+} from '@/common/utils/directory-cache.js'
 // 分享与剪贴板工具按需动态导入：既有登录态运行时探针只注入固定依赖，
 // 顶层新增 import 会破坏其装载契约；动态 import 不影响真实 H5 构建。
 import { uploadCloudFile } from '@/common/utils/upload.js'
@@ -668,6 +672,15 @@ const iconPickerTarget = ref(null)
 const currentFolderId = ref('')
 const treeLoading = ref(false)
 const fileLoading = ref(false)
+
+/**
+ * 移动端合并目录：展开状态、各目录文档索引、排序。
+ * filesByFolder 只存元数据（无正文），与 localStorage 缓存共享同一份结构。
+ */
+const directoryFiles = ref({})
+const directoryExpanded = ref({})
+const directorySort = ref({ key: 'updated_at', dir: 'desc' })
+let directoryCacheOwner = null
 
 /** 保存状态：dirty / saving / saved / conflict */
 const saveStatus = ref('saved')
@@ -982,7 +995,7 @@ onShow(() => {
   }
   if (!store.state.ready) return
   const token = uni.getStorageSync('uni_id_token')
-  // 分享链接与剪贴板不依赖登录态，先处理（匿名分享也能打开）
+  // 分享链接不依赖登录态，先处理（匿名分享也能打开）；剪贴板只在编辑态读取
   resolveShare()
   inspectClipboard()
   // 只有拿到「新的、本地未过期」的 token 时，才复位失效标记并重新同步身份；
@@ -1052,12 +1065,14 @@ watch(() => store.state.editorContent, () => {
 // 切到编辑态就没有「正文选区」这个概念了，浮动添加批注按钮必须收起；
 // 滚动容器同时换人（阅读器 → CodeMirror），滚动按钮状态要重新量一次。
 // 视图切换必须先把所有浮层关掉：编辑态下还挂着阅读态打开的批注详情/大纲会很怪。
-watch(mode, () => {
+watch(mode, (value) => {
   closeAllPopups()
   hasActiveSelection.value = false
   scrollHost = null
   activeOutlineIndex.value = -1
   nextTick(measureScroll)
+  // 阅读态不读剪贴板；进入编辑态后再补查，保留“追加剪贴板内容到文档”的能力。
+  if (value === 'edit' && !shareReadOnly.value) inspectClipboard()
 })
 
 function updateViewport() {
@@ -1220,7 +1235,48 @@ async function loadIdentity() {
 
 // ---------------- 数据加载 ----------------
 async function bootstrap() {
+  // 本地缓存只恢复一次；账号切换后允许按新 owner 再恢复一次，登录成功后的重复 bootstrap 只刷云端
+  const owner = store.state.user.uid || ''
+  if (directoryCacheOwner !== owner) {
+    directoryCacheOwner = owner
+    await restoreDirectoryCache()
+  }
   await Promise.all([loadTree(), loadFiles(currentFolderId.value)])
+  // 一级目录就绪后再逐一核对已展开目录，保证缓存命中但云端已变化时能跟上
+  await reconcileExpandedFolders()
+}
+
+/** 把当前目录状态写入 localStorage（不含正文） */
+function persistDirectoryCache() {
+  saveDirectoryCache({
+    owner: store.state.user.uid || '',
+    expanded: directoryExpanded.value,
+    folders: store.state.tree || [],
+    files: directoryFiles.value,
+    sort: directorySort.value
+  })
+}
+
+/** 启动时先载入缓存，让目录与已展开内容立即可见；图标临时 URL 重新换取 */
+async function restoreDirectoryCache() {
+  const cached = loadDirectoryCache(store.state.user.uid || '')
+  if (!cached) {
+    // 账号切换且新账号没有缓存时，不能沿用上一个账号的展开态与文件索引
+    directoryFiles.value = {}
+    directoryExpanded.value = {}
+    return false
+  }
+  store.setTree(await attachIconUrls(cached.folders || []))
+  directoryFiles.value = cached.files || {}
+  directoryExpanded.value = cached.expanded || {}
+  if (cached.sort) directorySort.value = cached.sort
+  const current = directoryFiles.value[currentFolderId.value]
+  if (current) store.setFiles(current)
+  return true
+}
+
+function normalizeFileList(list) {
+  return (Array.isArray(list) ? list : []).map(item => stripTransient(item))
 }
 
 /** 自定义图标的临时 URL 由页面批量换取后回填到 icon.url */
@@ -1241,17 +1297,112 @@ async function attachIconUrls(folders) {
 
 async function loadTree() {
   treeLoading.value = true
-  const res = await listTree()
-  treeLoading.value = false
-  if (res.code === 0) store.setTree(await attachIconUrls(res.data || []))
-  await loadRootIconUrl()
+  try {
+    const res = await listTree()
+    if (res.code === 0) {
+      const cloudFolders = await attachIconUrls(res.data || [])
+      // 目录一致时不重置引用，避免合并目录因无意义刷新丢失滚动位置；
+      // 不一致才更新 store 与缓存。
+      if (directoryCacheOwner === null || !folderListsEqual(cloudFolders, store.state.tree)) {
+        store.setTree(cloudFolders)
+        persistDirectoryCache()
+      }
+    }
+    await loadRootIconUrl()
+  } finally {
+    treeLoading.value = false
+  }
 }
 
 async function loadFiles(parentId) {
+  const targetId = parentId || ''
   fileLoading.value = true
-  const res = await listFiles({ parent_id: parentId || '', page: 1, pageSize: 100 })
-  fileLoading.value = false
-  if (res.code === 0 && res.data) store.setFiles(res.data.list || [])
+  try {
+    // 缓存先出：点击目录时不必等云端往返
+    const cached = directoryFiles.value[targetId]
+    if (cached && targetId === currentFolderId.value) store.setFiles(cached)
+    const res = await listFiles({ parent_id: targetId, page: 1, pageSize: 100 })
+    if (res.code === 0 && res.data) {
+      const list = normalizeFileList(res.data.list || [])
+      directoryFiles.value = { ...directoryFiles.value, [targetId]: list }
+      if (targetId === currentFolderId.value) store.setFiles(list)
+      persistDirectoryCache()
+    }
+  } finally {
+    fileLoading.value = false
+  }
+}
+
+/** 展开目录时按需拉取该目录文档；已有缓存则跳过，启动后的云端核对另行处理 */
+async function loadFolderFiles(folderId) {
+  if (!folderId || directoryFiles.value[folderId]) return
+  const res = await listFiles({ parent_id: folderId, page: 1, pageSize: 100 })
+  if (res.code !== 0 || !res.data) return
+  const list = normalizeFileList(res.data.list || [])
+  directoryFiles.value = { ...directoryFiles.value, [folderId]: list }
+  if (folderId === currentFolderId.value) store.setFiles(list)
+  persistDirectoryCache()
+}
+
+/**
+ * 逐一检查已展开目录的文档元数据是否与云端一致。
+ * 一致则保持缓存引用不变；不一致才更新对应目录，不触碰正文内容。
+ */
+async function reconcileExpandedFolders() {
+  const ids = Object.keys(directoryExpanded.value).filter(id => directoryExpanded.value[id])
+  let changed = false
+  for (const folderId of ids) {
+    const res = await listFiles({ parent_id: folderId, page: 1, pageSize: 100 })
+    if (res.code !== 0 || !res.data) continue
+    const cloudList = normalizeFileList(res.data.list || [])
+    if (fileListsEqual(directoryFiles.value[folderId] || [], cloudList)) continue
+    directoryFiles.value = { ...directoryFiles.value, [folderId]: cloudList }
+    if (folderId === currentFolderId.value) store.setFiles(cloudList)
+    changed = true
+  }
+  if (changed) persistDirectoryCache()
+}
+
+// ---------------- 合并目录交互（移动端） ----------------
+/**
+ * 展开文件夹：先用带遮罩的 loading 拦住用户其它操作，
+ * 等该目录的文档列表返回并写入目录索引后再翻转 expanded。
+ * 组件的子列表与箭头旋转都由 expanded 驱动，因此会同步延后到数据就绪之后。
+ */
+async function handleToggleDirectoryFolder(folderId) {
+  if (!folderId) return
+  // 收起是纯本地操作，无需 loading，立即生效
+  if (directoryExpanded.value[folderId]) {
+    const collapsed = { ...directoryExpanded.value }
+    delete collapsed[folderId]
+    directoryExpanded.value = collapsed
+    persistDirectoryCache()
+    return
+  }
+  toast.loading('正在加载文件夹…')
+  try {
+    await loadFolderFiles(folderId)
+  } catch (error) {
+    // 拉取失败也展开，避免目录再也打不开；空列表由组件自身状态呈现
+  } finally {
+    toast.close()
+  }
+  const expanded = { ...directoryExpanded.value }
+  expanded[folderId] = true
+  directoryExpanded.value = expanded
+  persistDirectoryCache()
+}
+
+function handleDirectorySort(sort) {
+  if (!sort || !sort.key) return
+  directorySort.value = { key: sort.key, dir: sort.dir === 'asc' ? 'asc' : 'desc' }
+  persistDirectoryCache()
+}
+
+async function reloadDirectoryAfterChange() {
+  await loadTree()
+  await loadFiles(currentFolderId.value)
+  await reconcileExpandedFolders()
 }
 
 async function reloadComments(fileId) {
@@ -1274,8 +1425,8 @@ async function handleFolderSelect(node) {
 }
 
 function handleDrawerFolderSelect(node) {
-  // 点击文件夹只刷新右侧文档列表，抽屉保持展开，便于继续浏览并点开该目录下的文档；
-  // 关闭入口见抽屉右上角关闭按钮 / 遮罩，打开文档时仍由 handleDrawerOpenFile 收起。
+  // 合并目录里点文件夹只高亮并切换「新建/上传」落点，抽屉保持展开；
+  // 展开子层级仍由箭头负责，打开文档才由 handleDrawerOpenFile 收起。
   handleFolderSelect(node)
 }
 
@@ -1285,7 +1436,12 @@ async function handleCreateFolder({ parent_id }) {
   const res = await createFolder({ parent_id: parent_id || '', name })
   if (res.code === 0) {
     toast.success('已创建')
-    await loadTree()
+    // 让刚建好的子文件夹直接可见，并把展开态写入缓存
+    if (parent_id) {
+      directoryExpanded.value = { ...directoryExpanded.value, [parent_id]: true }
+      persistDirectoryCache()
+    }
+    await reloadDirectoryAfterChange()
   }
 }
 
@@ -1296,8 +1452,7 @@ async function handleRenameFolder(node) {
   const res = await rename({ file_id: node._id, name })
   if (res.code === 0) {
     toast.success('已重命名')
-    await loadTree()
-    await loadFiles(currentFolderId.value)
+    await reloadDirectoryAfterChange()
   }
 }
 
@@ -1308,8 +1463,11 @@ function handleRemoveFolder(node) {
     const result = await softDelete({ file_ids: [node._id] })
     if (result.code === 0) {
       toast.success('已移入回收站')
-      await loadTree()
-      await loadFiles(currentFolderId.value)
+      const next = { ...directoryExpanded.value }
+      delete next[node._id]
+      directoryExpanded.value = next
+      persistDirectoryCache()
+      await reloadDirectoryAfterChange()
     }
   })
 }
@@ -1415,8 +1573,20 @@ async function handleIconConfirm(icon) {
 }
 
 // ---------------- 文件交互 ----------------
+/** 点击的文档是否已打开在正文视口：只按 _id 判断，避免重名文件误判 */
+function isCurrentOpenFile(file) {
+  const current = store.state.currentFile
+  return !!file && !!current && String(file._id) === String(current._id)
+}
+
 async function openDocument(file) {
   if (!file) return
+  // 同一个文件已在正文视口打开：不重复拉取正文/批注，也不要重置编辑态与滚动位置。
+  // 移动端此时只需收起左侧目录，让用户回到正在看的文档。
+  if (isCurrentOpenFile(file)) {
+    if (isMobile.value) drawerVisible.value = false
+    return
+  }
   // 打开文档要拉取正文、批注与图片链接，期间用 wot loading 遮罩；
   // 无论成功失败都在 finally 关闭，避免转圈卡死。
   toast.loading('正在打开文档…')
@@ -1480,8 +1650,7 @@ function handleBatchDelete(ids) {
     const result = await softDelete({ file_ids: ids })
     if (result.code === 0) {
       toast.success('已移入回收站')
-      await loadFiles(currentFolderId.value)
-      await loadTree()
+      await reloadDirectoryAfterChange()
     }
   })
 }
@@ -1496,7 +1665,7 @@ async function handleRenameFile(file) {
   const res = await rename({ file_id: file._id, name })
   if (res.code === 0) {
     toast.success('已重命名')
-    await loadFiles(currentFolderId.value)
+    await reloadDirectoryAfterChange()
     if (store.state.currentFile && store.state.currentFile._id === file._id && res.data) {
       store.openFile(
         { ...store.state.currentFile, name: res.data.name },
@@ -1697,7 +1866,12 @@ async function chooseMoveTarget(target) {
     toast.success('已移动')
     moveVisible.value = false
     moveSource.value = null
-    await Promise.all([loadTree(), loadFiles(currentFolderId.value)])
+    // 移动后目标目录可能被用户展开：补一次展开目录核对，避免缓存显示旧位置
+    if (target._id) {
+      directoryExpanded.value = { ...directoryExpanded.value, [target._id]: true }
+    }
+    persistDirectoryCache()
+    await reloadDirectoryAfterChange()
   }
 }
 
@@ -1778,7 +1952,7 @@ async function handleCreateFile() {
       content
     })
     if (res.code !== 0 || !res.data) throw new Error('创建失败')
-    await Promise.all([loadFiles(currentFolderId.value), loadTree()])
+    await reloadDirectoryAfterChange()
     await openDocument(res.data)
     mode.value = 'edit'
   } catch (error) {
@@ -1834,8 +2008,7 @@ function handleUpload() {
 
       if (uploadedCount > 0) {
         toast.show(failedCount > 0 ? `成功 ${uploadedCount} 篇，失败 ${failedCount} 篇` : `已上传 ${uploadedCount} 篇`)
-        await loadFiles(currentFolderId.value)
-        await loadTree()
+        await reloadDirectoryAfterChange()
       } else {
         toast.error('上传失败，请重试')
       }
@@ -1864,8 +2037,7 @@ function handleImport() {
         })
         if (res.code === 0) {
           toast.success('导入成功')
-          await loadFiles(currentFolderId.value)
-          await loadTree()
+          await reloadDirectoryAfterChange()
         }
       } catch (error) {
         toast.error('导入失败，请重试')
@@ -1884,11 +2056,18 @@ async function handleSave() {
   if (!file || saveStatus.value === 'saving') return
   saveStatus.value = 'saving'
 
-  const res = await saveContent({
-    file_id: file._id,
-    content: store.state.editorContent,
-    base_version: store.state.baseVersion
-  })
+  // 保存期间用带遮罩的 loading 拦住用户其它操作；无论成功/冲突/失败都在 finally 关闭
+  toast.loading('正在保存…')
+  let res
+  try {
+    res = await saveContent({
+      file_id: file._id,
+      content: store.state.editorContent,
+      base_version: store.state.baseVersion
+    })
+  } finally {
+    toast.close()
+  }
 
   if (res.code === 0) {
     applySaveSuccess(file, res.data)
@@ -1913,17 +2092,23 @@ async function applySaveSuccess(file, data) {
   saveStatus.value = 'saved'
   store.resetBaseVersion(data.version)
   // 只刷新元数据与版本，editorContent 仍是当前内容
-  store.openFile(
-    {
-      ...file,
-      version: data.version,
-      size: data.size,
-      content_hash: data.content_hash,
-      updated_at: data.updated_at
-    },
-    store.state.editorContent,
-    store.state.comments
-  )
+  const nextDoc = {
+    ...file,
+    version: data.version,
+    size: data.size,
+    content_hash: data.content_hash,
+    updated_at: data.updated_at
+  }
+  store.openFile(nextDoc, store.state.editorContent, store.state.comments)
+  // 合并目录的元数据索引同步跟上，排序（时间 / 大小）不必等下次启动才正确
+  const parentId = file.parent_id || ''
+  const list = directoryFiles.value[parentId] || []
+  directoryFiles.value = {
+    ...directoryFiles.value,
+    [parentId]: list.map(item => item && item._id === file._id ? { ...item, ...stripTransient(nextDoc) } : item)
+  }
+  if (parentId === currentFolderId.value) store.setFiles(directoryFiles.value[parentId])
+  persistDirectoryCache()
   await reloadComments(file._id)
   toast.success('已保存')
   // 图片引用追踪：以刚保存的正文对齐引用表。静默失败不干扰保存成功提示，
@@ -1936,12 +2121,18 @@ async function handleConflictOverwrite() {
   if (!file) return
   conflictVisible.value = false
   saveStatus.value = 'saving'
-  const res = await saveContent({
-    file_id: file._id,
-    content: store.state.editorContent,
-    base_version: conflict.value.cloudVersion,
-    force: true
-  })
+  toast.loading('正在保存…')
+  let res
+  try {
+    res = await saveContent({
+      file_id: file._id,
+      content: store.state.editorContent,
+      base_version: conflict.value.cloudVersion,
+      force: true
+    })
+  } finally {
+    toast.close()
+  }
   if (res.code === 0) applySaveSuccess(file, res.data)
   else {
     saveStatus.value = 'dirty'
@@ -2339,10 +2530,13 @@ async function resolveShare() {
 /**
  * 检查剪贴板：分享链接询问是否打开，普通文本询问是否追加到当前文档。
  *
- * 只在开关开启时读；读到内容后与上次处理过的文本比对，
+ * 只在开关开启、且处于编辑态时读；阅读态完全不碰剪贴板。
+ * 读到内容后与上次处理过的文本比对，
  * **只有新内容才继续走后续逻辑**，同一段文字不会被反复追问。
  */
 async function inspectClipboard() {
+  // 阅读态（含只读分享）不读取剪贴板，避免无谓的浏览器授权提示与隐私访问。
+  if (mode.value !== 'edit' || shareReadOnly.value) return
   if (uni.getStorageSync('mm_clipboard_append_enabled') === false) return
   let clipboard
   try {
@@ -2418,8 +2612,7 @@ async function handleSearchSelect({ file_id, start_offset }) {
 }
 
 async function handleTrashChanged() {
-  await loadFiles(currentFolderId.value)
-  await loadTree()
+  await reloadDirectoryAfterChange()
 }
 
 function goTrash() {
@@ -3156,15 +3349,10 @@ for (const item of POPUPS) {
   background-color: var(--mm-surface-2);
 }
 
-.mm-drawer__tree {
-  flex: none;
-  max-height: 42%;
-  overflow: auto;
-  border-bottom: 1px solid var(--mm-border);
-  padding: calc(8px * var(--mm-ui-scale, 1)) 0;
-}
-
-.mm-drawer__list {
+/* 合并目录：只保留一个滚动视口，底部回收站入口固定 */
+.mm-drawer__body {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
 }

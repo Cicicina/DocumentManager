@@ -141,8 +141,11 @@ test('移动执行：disabled 目标早退，成功后刷新目录树与当前�
   const body = functionOf(PAGE, 'chooseMoveTarget')
   assert.match(body, /if \(!source \|\| !target \|\| target\.disabled\) return/, '置灰目标必须早退，不发起请求')
   assert.match(body, /move\(\{ file_id: source\._id, parent_id: target\._id \|\| '' \}\)/, '应调用 move 并把根节点视为空 parent_id')
-  assert.match(body, /loadTree\(\)/, '成功后应刷新目录树')
-  assert.match(body, /loadFiles\(currentFolderId\.value\)/, '成功后应刷新当前目录列表')
+  assert.match(body, /move\(\{ file_id: source\._id, parent_id: target\._id \|\| '' \}\)/, '应调用 move 并把根节点视为空 parent_id')
+  // 刷新链路抽成统一函数：内部仍必须同时刷新目录树、当前目录与展开目录缓存
+  assert.match(body, /await reloadDirectoryAfterChange\(\)/, '成功后应刷新目录')
+  assert.match(PAGE, /async function reloadDirectoryAfterChange\(\)[\s\S]*?await loadTree\(\)[\s\S]*?await loadFiles\(currentFolderId\.value\)[\s\S]*?await reconcileExpandedFolders\(\)/,
+    '统一刷新函数必须覆盖目录树、当前目录与展开目录')
 })
 
 test('移动入口：文档与文件夹都能唤起同一弹层', () => {

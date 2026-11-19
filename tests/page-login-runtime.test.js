@@ -143,6 +143,12 @@ function createPageDeps(options) {
     }),
     downloadMarkdown: () => {},
     uploadCloudFile: async () => ({ fileID: 'cloud://mock/x.md' }),
+    // 合并目录缓存替身：这些测试只关心登录守卫，缓存行为由 directory-cache.test.js 覆盖
+    loadDirectoryCache: () => null,
+    saveDirectoryCache: () => true,
+    folderListsEqual: () => false,
+    fileListsEqual: () => false,
+    stripTransient: item => item,
     // 业务 API 替身
     ...apiStubs,
     // 关键：注入 common/api/index.js 的真实登录态函数，形成真正的集成验证
