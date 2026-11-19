@@ -387,7 +387,7 @@ test('docs/API.md 的方法名与 6 个云对象实际导出逐个一致', () =>
   // 架构里声明的方法数量
   assert.equal(documented['mm-file'].length, 17, 'mm-file 应有 17 个方法')
   assert.equal(documented['mm-comment'].length, 5, 'mm-comment 应有 5 个方法')
-  assert.equal(documented['mm-settings'].length, 7, 'mm-settings 应有 7 个方法')
+  assert.equal(documented['mm-settings'].length, 8, 'mm-settings 应有 8 个方法')
   assert.equal(documented['mm-image'].length, 6, 'mm-image 应有 6 个方法')
   assert.equal(documented['mm-share'].length, 5, 'mm-share 应有 5 个方法')
 })

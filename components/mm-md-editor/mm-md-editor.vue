@@ -9,12 +9,57 @@
       language="zh-CN"
       :theme="editorTheme"
       :preview="showPreview"
+      :toolbars="mdToolbars"
       :on-upload-img="handleUploadImg"
       :style="{ height: '100%' }"
-    />
+    >
+      <!--
+        自定义工具条项：md-editor 用 toolbars 数组里的数字索引取 defToolbars 的第 N 个节点。
+        mdToolbars 末尾固定追加 MORE_TOOLBAR_INDEX(0)，这里只放这一个节点，
+        因此「更多」按钮始终渲染在格式栏最右侧。
+      -->
+      <template #defToolbars>
+        <view
+          class="md-editor-toolbar-item mm-editor__tool-more"
+          title="调整工具栏顺序"
+          aria-label="调整工具栏顺序"
+          @click="openToolbarPanel"
+        >
+          <uni-icons type="more" size="16" color="var(--mm-text-weak)" />
+        </view>
+      </template>
+    </component>
     <view v-else class="mm-editor__loading">
       <wd-loading size="20px" />
     </view>
+
+    <!-- 工具栏排序面板：拖动条目调整顺序，松手自动保存到云端设置 -->
+    <wd-popup v-model="toolbarPanelVisible" position="bottom" custom-style="border-radius:12px 12px 0 0;">
+      <view class="mm-tool-panel">
+        <view class="mm-tool-panel__head">
+          <text class="mm-tool-panel__title">调整工具栏顺序</text>
+          <text class="mm-tool-panel__tip">按住条目拖动排序，结果自动保存到云端</text>
+        </view>
+        <scroll-view scroll-y class="mm-tool-panel__list">
+          <view
+            v-for="(item, index) in toolbarItems"
+            :key="item._id"
+            class="mm-tool-panel__item"
+            :class="{ 'is-dragging': toolbarDraggingId === item._id }"
+            :data-drag-index="index"
+            @pointerdown="startToolbarDrag($event, item, index)"
+            @touchstart="startToolbarDrag($event, item, index)"
+          >
+            <uni-icons type="bars" size="16" color="var(--mm-text-weak)" />
+            <text class="mm-tool-panel__label">{{ item.label }}</text>
+          </view>
+        </scroll-view>
+        <view class="mm-tool-panel__foot">
+          <wd-button size="small" plain @click="resetToolbarOrder">恢复默认</wd-button>
+          <wd-button size="small" type="primary" @click="toolbarPanelVisible = false">完成</wd-button>
+        </view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -45,6 +90,14 @@ import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
 import { toast } from '@/common/utils/toast.js'
 import { register as registerImage, getTempUrls } from '@/common/api/mm-image.js'
+import { setToolbarOrder } from '@/common/api/mm-settings.js'
+import { useImageDragSort } from '@/common/utils/drag-order.js'
+import {
+  buildToolbars,
+  DEFAULT_TOOLBAR_ORDER,
+  TOOLBAR_LABELS,
+  normalizeToolbarOrder
+} from '@/common/utils/editor-toolbar.js'
 // md-editor-v3 4.x 的全局样式（4.x 起路径为 lib/style.css）
 import 'md-editor-v3/lib/style.css'
 import { uploadCloudFile } from '@/common/utils/upload.js'
@@ -70,6 +123,49 @@ const store = useAppStore()
 
 /** MdEditor 组件实例：4.x 的 preview prop 只在初始化生效，运行时切换须调实例的 togglePreview */
 const editorInstance = ref(null)
+
+// ---------------- 格式栏顺序（云端持久化 + 拖动排序） ----------------
+/**
+ * 传给 MdEditor 的 toolbars：云端顺序（App.vue 启动 getConfig 写入 store）+ 末尾「更多」索引。
+ * store.config.toolbar_order 为空（配置未就绪）时 normalize 回退默认，不会渲染空白工具栏。
+ */
+const mdToolbars = computed(() => buildToolbars(store.state.config.toolbar_order))
+
+const toolbarPanelVisible = ref(false)
+/** 排序面板里的可变数组：[{_id: key, label}]，_id 供 drag-order 跟踪 draggingId */
+const toolbarItems = ref([])
+
+/** 打开排序面板：每次从「当前生效顺序」重建，避免上次未保存的中间态残留 */
+function openToolbarPanel() {
+  const order = normalizeToolbarOrder(store.state.config.toolbar_order)
+  toolbarItems.value = order.map(key => ({ _id: key, label: TOOLBAR_LABELS[key] || key }))
+  toolbarPanelVisible.value = true
+}
+
+/** 拖动松手提交：把当前顺序写回云端配置，成功后同步到 store，立即影响 mdToolbars */
+async function commitToolbarOrder(items) {
+  const order = (Array.isArray(items) ? items : toolbarItems.value).map(item => item._id)
+  const res = await setToolbarOrder({ order })
+  if (res && res.code === 0 && res.data) {
+    store.setConfig(res.data)
+    toast.success('工具栏顺序已保存')
+  }
+}
+
+const {
+  draggingId: toolbarDraggingId,
+  startDrag: startToolbarDrag
+} = useImageDragSort(
+  () => toolbarItems.value,
+  next => { toolbarItems.value = next },
+  commitToolbarOrder
+)
+
+/** 恢复 md-editor-v3 默认顺序并立即保存 */
+async function resetToolbarOrder() {
+  toolbarItems.value = DEFAULT_TOOLBAR_ORDER.map(key => ({ _id: key, label: TOOLBAR_LABELS[key] || key }))
+  await commitToolbarOrder(toolbarItems.value)
+}
 
 /** 组件内维护的 fileID → 临时 URL 映射（外部传入 + 本次上传） */
 const urlMap = ref({})
@@ -258,6 +354,79 @@ defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview, scrol
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+/* defToolbars 自定义节点：md-editor 会 cloneVNode 注入 insert/theme，需保留原生 flex 布局 */
+.mm-editor__tool-more {
+  gap: 2px;
+}
+.mm-editor__tool-more :deep(.uni-icons) {
+  transform: scale(var(--mm-ui-scale, 1));
+}
+
+/* 工具栏排序面板 */
+.mm-tool-panel {
+  padding: calc(12px * var(--mm-ui-scale, 1));
+  padding-bottom: calc(20px * var(--mm-ui-scale, 1));
+}
+.mm-tool-panel__head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--mm-ui-scale, 1));
+  margin-bottom: calc(10px * var(--mm-ui-scale, 1));
+}
+.mm-tool-panel__title {
+  font-size: calc(15px * var(--mm-ui-scale, 1));
+  font-weight: 600;
+  color: var(--mm-text);
+}
+.mm-tool-panel__tip {
+  font-size: calc(11px * var(--mm-ui-scale, 1));
+  color: var(--mm-text-weak);
+}
+.mm-tool-panel__list {
+  max-height: 46vh;
+  border: 1px solid var(--mm-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mm-tool-panel__item {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--mm-ui-scale, 1));
+  min-height: calc(40px * var(--mm-ui-scale, 1));
+  padding: calc(6px * var(--mm-ui-scale, 1)) calc(12px * var(--mm-ui-scale, 1));
+  border-bottom: 1px solid var(--mm-border);
+  background-color: var(--mm-surface);
+  color: var(--mm-text);
+  font-size: calc(13px * var(--mm-ui-scale, 1));
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+}
+.mm-tool-panel__item:last-child {
+  border-bottom: none;
+}
+.mm-tool-panel__item.is-dragging {
+  opacity: 0.6;
+  background-color: var(--mm-accent-weak);
+  cursor: grabbing;
+}
+.mm-tool-panel__label {
+  flex: 1;
+}
+.mm-tool-panel__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(8px * var(--mm-ui-scale, 1));
+  margin-top: calc(12px * var(--mm-ui-scale, 1));
+}
+</style>
+
+<style>
+/* md-editor 内部 DOM：排序面板由 wd-popup 挂到 body，取消编辑器内的换行覆盖对它的影响 */
+.md-editor-toolbar-item.mm-editor__tool-more {
+  min-width: calc(24px * var(--mm-ui-scale, 1));
 }
 </style>
 

@@ -22,6 +22,49 @@ const dbCommand = db.command
 const DEFAULT_PAGE_SIZE = 20
 const MAX_PAGE_SIZE = 100
 
+/**
+ * 编辑器格式栏默认顺序（与前端 common/utils/editor-toolbar.js 逐项一致）。
+ * 云侧是 CommonJS，无法 import 前端 ESM，故在此保留同构副本；
+ * tests/editor-toolbar.test.js 会断言两份清单一致，防止漂移。
+ */
+const DEFAULT_TOOLBAR_ORDER = [
+  'bold', 'underline', 'italic', 'strikeThrough', '-',
+  'title', 'sub', 'sup', 'quote', 'unorderedList', 'orderedList', 'task', '-',
+  'codeRow', 'code', 'link', 'image', 'table', 'mermaid', 'katex', '-',
+  'revoke', 'next', 'save', '=',
+  'prettier', 'pageFullscreen', 'fullscreen', 'preview', 'previewOnly',
+  'htmlPreview', 'catalog', 'github'
+]
+const TOOLBAR_KEY_SET = new Set(DEFAULT_TOOLBAR_ORDER)
+const isToolbarSeparator = key => key === '-' || key === '='
+
+/**
+ * 归一化工具条顺序：过滤未知 key、按钮去重（分隔符可重复）、补齐缺失按钮；
+ * 非法输入回退默认。与前端 normalizeToolbarOrder 行为一致。
+ * @param {*} input
+ * @returns {string[]}
+ */
+function normalizeToolbarOrder(input) {
+  const source = Array.isArray(input) && input.length > 0 ? input : DEFAULT_TOOLBAR_ORDER
+  const seen = new Set()
+  const result = []
+  for (const key of source) {
+    if (!TOOLBAR_KEY_SET.has(key)) continue
+    if (!isToolbarSeparator(key)) {
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    result.push(key)
+  }
+  for (const key of DEFAULT_TOOLBAR_ORDER) {
+    if (!isToolbarSeparator(key) && !seen.has(key)) {
+      seen.add(key)
+      result.push(key)
+    }
+  }
+  return result
+}
+
 // ----------------------------------------------------------------------------
 // 本对象内私有工具
 // ----------------------------------------------------------------------------
@@ -177,6 +220,8 @@ function toConfigView(config) {
     // 目录树根节点的显示名称与图标（根节点不是真实文件夹记录，因此存系统配置）
     root_name: typeof config.root_name === 'string' ? config.root_name : '',
     root_icon: normalizeIcon(config.root_icon),
+    // 编辑器格式栏顺序：非法/缺失时回退默认，前端拿到即可直接喂给 MdEditor
+    toolbar_order: normalizeToolbarOrder(config.toolbar_order),
     anonymous: config.account_enabled === false
   }
 }
@@ -222,6 +267,12 @@ module.exports = {
   async getConfig() {
     try {
       const config = await mm.readConfig()
+      // readConfig() 只返回三项核心字段；格式栏顺序从原始配置文档补齐，
+      // 否则每次 getConfig 都会丢失用户已保存的自定义顺序。
+      const raw = await findConfigDoc()
+      if (raw && Object.prototype.hasOwnProperty.call(raw, 'toolbar_order')) {
+        config.toolbar_order = raw.toolbar_order
+      }
       return mm.ok(toConfigView(config))
     } catch (error) {
       return mm.fail(ERR.INTERNAL_ERROR, '配置读取失败')
@@ -375,6 +426,48 @@ module.exports = {
       }
 
       const config = await mm.readConfig()
+      return toConfigView(config)
+    })
+  },
+
+  /**
+   * 保存编辑器格式栏的按钮顺序。
+   * 与 updateRoot 同属全局 UI 偏好：权限开启时仅管理员可改，匿名模式开放。
+   * 顺序在服务端归一化（去重 / 过滤未知 / 补齐缺失），避免前端被绕过时写入脏数据。
+   * @param {{order:Array<string|number>}} param
+   * @returns {Promise<object>} 最新配置视图
+   */
+  async setToolbarOrder(param) {
+    return run(this, async (ctx) => {
+      mm.AuthGuard.assertAdmin(ctx)
+
+      const source = param || {}
+      if (!Array.isArray(source.order)) {
+        throw bizError(ERR.PARAM_INVALID, '工具栏顺序格式不正确')
+      }
+      const order = normalizeToolbarOrder(source.order)
+      const patch = {
+        toolbar_order: order,
+        updated_by: ctx.anonymous ? ANONYMOUS_USER_ID : ctx.uid,
+        updated_at: mm.now()
+      }
+
+      const existing = await findConfigDoc()
+      if (existing) {
+        await mm.collection(TABLE.SETTINGS).doc(existing._id).update(patch)
+      } else {
+        await mm.collection(TABLE.SETTINGS).add(Object.assign({
+          key: SETTINGS_KEY,
+          account_enabled: true,
+          permission_enabled: false,
+          admin_user_id: '',
+          root_name: '',
+          root_icon: null
+        }, patch))
+      }
+
+      const config = await mm.readConfig()
+      config.toolbar_order = order
       return toConfigView(config)
     })
   },

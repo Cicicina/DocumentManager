@@ -24,6 +24,12 @@ export const updateConfig = (param = {}) => call('mmSettings', 'updateConfig', p
  */
 export const updateRoot = (param = {}) => call('mmSettings', 'updateRoot', param)
 
+/**
+ * 保存编辑器格式栏按钮顺序（全局 UI 偏好，随 getConfig 一起读取）。
+ * @param {{order:Array<string>}} param
+ */
+export const setToolbarOrder = (param = {}) => call('mmSettings', 'setToolbarOrder', param)
+
 /** 用户列表（权限开启时仅管理员） */
 export const listUsers = (param = {}) => call('mmSettings', 'listUsers', param)
 

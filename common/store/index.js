@@ -19,7 +19,9 @@ const state = reactive({
   config: {
     account_enabled: true,
     permission_enabled: false,
-    admin_user_id: ''
+    admin_user_id: '',
+    // 编辑器格式栏顺序；App.vue 启动 getConfig 后由 setConfig 覆盖为云端值
+    toolbar_order: []
   },
   /** 当前身份；账号关闭时为固定匿名身份 */
   user: {

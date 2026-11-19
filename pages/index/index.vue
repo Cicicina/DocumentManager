@@ -216,10 +216,22 @@
                若与本列同级上下排列会吃光高度，把 .mm-content 压成 0。 -->
           <view class="mm-doc">
             <view class="mm-mode">
-              <view class="mm-mode__item" :class="{ 'is-active': mode === 'read' }" @click="mode = 'read'">阅读</view>
-              <view v-if="!shareReadOnly" class="mm-mode__item" :class="{ 'is-active': mode === 'edit' }" @click="mode = 'edit'">编辑</view>
+              <!--
+                阅读 / 编辑合并为一个按钮：文字 + icon，单击切换（类似主题切换）。
+                按钮显示「当前模式」，title 提示点击后的目标模式；只读分享时不可切换。
+              -->
+              <view
+                class="mm-mode__switch"
+                :class="{ 'is-readonly': shareReadOnly }"
+                :title="shareReadOnly ? '只读文档' : (mode === 'edit' ? '切换到阅读' : '切换到编辑')"
+                :aria-label="shareReadOnly ? '只读文档' : (mode === 'edit' ? '切换到阅读' : '切换到编辑')"
+                @click="toggleMode"
+              >
+                <uni-icons :type="mode === 'edit' ? 'compose' : 'eye'" size="15" color="var(--mm-accent)" />
+                <text class="mm-mode__switch-label">{{ mode === 'edit' ? '编辑' : '阅读' }}</text>
+              </view>
               <view class="mm-mode__spacer" />
-              <!-- 大纲开关：与阅读 / 编辑同一行，默认关闭 -->
+              <!-- 大纲开关：与模式按钮同一行，默认关闭 -->
               <view
                 class="mm-mode__action mm-mode__action--outline"
                 :class="{ 'is-active': outlineVisible }"
@@ -249,7 +261,7 @@
                 @click="imagePickerVisible = true"
               >
                 <uni-icons type="image" size="15" color="var(--mm-text-weak)" />
-                <text class="mm-mode__action-label">插入图片</text>
+                <text class="mm-mode__action-label">图片</text>
               </view>
               <view
                 v-if="mode === 'edit' && !shareReadOnly"
@@ -578,6 +590,15 @@ const mode = ref('read')
 /** 编辑态是否显示右侧实时预览分栏；仅编辑模式生效，切换阅读/编辑不重置用户选择 */
 const editorPreview = ref(true)
 const drawerVisible = ref(false)
+
+/**
+ * 阅读 / 编辑合并后的单一切换按钮：单击切到另一种模式（类似主题切换）。
+ * 只读分享文档强制停留在阅读态，按钮仅作状态展示、不响应切换。
+ */
+function toggleMode() {
+  if (shareReadOnly.value) return
+  mode.value = mode.value === 'read' ? 'edit' : 'read'
+}
 
 /** 批注列表是否展开；默认收起，避开批注组件 height:100% 把正文压成 0 的历史坑 */
 const annotationVisible = ref(false)
@@ -2918,7 +2939,16 @@ for (const item of POPUPS) {
   }
 
   .mm-mode {
-    padding: calc(4px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
+    padding: calc(3px * var(--mm-ui-scale, 1)) calc(6px * var(--mm-ui-scale, 1));
+    gap: calc(4px * var(--mm-ui-scale, 1));
+    row-gap: calc(2px * var(--mm-ui-scale, 1));
+  }
+
+  /* 手机端收紧每个动作按钮的内边距，保证切换按钮 + 大纲/分享/图片/预览 同屏一行 */
+  .mm-mode__switch,
+  .mm-mode__action {
+    padding: calc(2px * var(--mm-ui-scale, 1)) calc(4px * var(--mm-ui-scale, 1));
+    gap: calc(2px * var(--mm-ui-scale, 1));
   }
 
   .mm-add-annotation-fab {
@@ -2980,7 +3010,7 @@ for (const item of POPUPS) {
   padding-left: calc(10px * var(--mm-ui-scale, 1) + 14px);
 }
 
-/* 阅读 / 编辑切换：允许换行，窄屏不再靠挤压或隐藏文字塞进一行 */
+/* 阅读 / 编辑合并为单个切换按钮（.mm-mode__switch），旧的 .mm-mode__item 已移除 */
 .mm-mode {
   display: flex;
   align-items: center;
@@ -2994,17 +3024,31 @@ for (const item of POPUPS) {
   background-color: var(--mm-surface);
 }
 
-.mm-mode__item {
+/* 阅读 / 编辑合并按钮：文字 + icon，突出当前模式，单击切换 */
+.mm-mode__switch {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--mm-ui-scale, 1));
   padding: calc(3px * var(--mm-ui-scale, 1)) calc(10px * var(--mm-ui-scale, 1));
-  font-size: calc(12px * var(--mm-ui-scale, 1));
-  color: var(--mm-text-weak);
   border-radius: 10px;
-  cursor: pointer;
-}
-
-.mm-mode__item.is-active {
+  font-size: calc(12px * var(--mm-ui-scale, 1));
+  font-weight: 500;
   color: var(--mm-accent);
   background-color: var(--mm-accent-weak);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mm-mode__switch.is-readonly {
+  cursor: default;
+}
+
+.mm-mode__switch :deep(.uni-icons) {
+  transform: scale(var(--mm-ui-scale, 1));
+}
+
+.mm-mode__switch-label {
+  white-space: nowrap;
 }
 
 .mm-mode__spacer {
