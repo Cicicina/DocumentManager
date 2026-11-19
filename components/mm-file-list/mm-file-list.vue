@@ -40,8 +40,15 @@
         @click="emit('open-folder', folder)"
       >
         <view class="mm-list__folder-icon">
+          <!-- 自定义上传图标：父级 attachIconUrls 已把 fileID 换成临时 URL 回填到 icon.url -->
           <image
-            v-if="folder.icon && folder.icon.type === 'preset' && folder.icon.value"
+            v-if="folder.icon && folder.icon.type === 'custom' && folder.icon.url"
+            class="mm-list__folder-img"
+            :src="folder.icon.url"
+            mode="aspectFit"
+          />
+          <image
+            v-else-if="folder.icon && folder.icon.type === 'preset' && folder.icon.value"
             class="mm-list__folder-img"
             :src="`/static/icons/${folder.icon.value}.svg`"
             mode="aspectFit"
