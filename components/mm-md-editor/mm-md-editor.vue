@@ -39,7 +39,6 @@
       <view class="mm-tool-panel">
         <view class="mm-tool-panel__head">
           <text class="mm-tool-panel__title">调整工具栏顺序</text>
-          <text class="mm-tool-panel__tip">按住条目拖动排序，结果自动保存到云端</text>
         </view>
         <scroll-view scroll-y class="mm-tool-panel__list">
           <view
@@ -142,7 +141,9 @@ const moreBtnStyle = computed(() => ({
   position: 'fixed',
   right: '0',
   top: `${moreBtnTop.value}px`,
-  zIndex: '20',
+  // 必须低于 wot 弹窗蒙版的默认 zIndex(10)，否则打开排序面板时按钮浮在灰色蒙版之上；
+  // 同时高于编辑器工具条内容（无 z-index），保证常态下按钮正常显示在最右侧。
+  zIndex: '9',
   display: moreBtnVisible.value ? 'flex' : 'none'
 }))
 
@@ -158,10 +159,11 @@ function syncMoreBtnPos() {
   moreBtnTop.value = Math.max(0, Math.round(rect.top + (rowHeight - MORE_BTN_SIZE) / 2))
   moreBtnVisible.value = rect.bottom > 0 && rect.top < viewH
 
-  // 右侧留白：工具条是 md-editor 内部 DOM（无本组件 scope 属性），用内联样式确保生效，
-  // 避免固定的「更多」按钮盖住最后一个格式按钮。
-  const barRight = host.querySelector('.md-editor-toolbar-right')
-  if (barRight) barRight.style.paddingRight = 'calc(32px * var(--mm-ui-scale, 1))'
+  // 整条工具条右侧预留与「更多」按钮等宽的留白（按钮固定贴视口右缘、宽 32px）。
+  // 之前只对 .md-editor-toolbar-right 加 padding，换行或横滑到底时最后一个按钮仍会被盖住；
+  // 加在整条工具条上可覆盖左/右两组及所有行。
+  // 工具条是 md-editor 内部 DOM（无本组件 scope 属性），用内联样式确保生效。
+  toolbar.style.paddingRight = 'calc(32px * var(--mm-ui-scale, 1))'
 }
 
 /** 异步 MdEditor 首帧可能还没有工具条 DOM，重试几次直到量到位置 */
@@ -439,10 +441,6 @@ defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview, scrol
   font-size: calc(15px * var(--mm-ui-scale, 1));
   font-weight: 600;
   color: var(--mm-text);
-}
-.mm-tool-panel__tip {
-  font-size: calc(11px * var(--mm-ui-scale, 1));
-  color: var(--mm-text-weak);
 }
 .mm-tool-panel__list {
   max-height: 46vh;

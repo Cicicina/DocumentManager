@@ -224,11 +224,22 @@ test('mm-md-editor：更多按钮 fixed 在视口右侧并跟随工具条行/滚
   assert.match(src, /addEventListener\?.\('scroll', syncMoreBtnPos/, '滚动时重新对齐')
   assert.match(src, /addEventListener\?.\('resize', syncMoreBtnPos/, '窗口尺寸变化时重新对齐')
 
-  assert.match(src, /querySelector\('\.md-editor-toolbar-right'\)/, '用 JS 给工具条内部 DOM 留白')
-  assert.match(src, /barRight\.style\.paddingRight/, '内联设置右侧留白，避免被 scope 属性拦截')
+  // 留白加在整条工具条上（非仅 toolbar-right），横滑到底/换行都不遮挡最后一个按钮
+  assert.match(src, /toolbar\.style\.paddingRight = 'calc\(32px \* var\(--mm-ui-scale, 1\)\)'/,
+    '整条工具条右侧预留按钮等宽留白')
+
+  // 层级：低于 wot 弹窗蒙版默认 zIndex(10)，避免按钮浮在蒙版上
+  assert.match(src, /zIndex: '9'/, '按钮层级 9 低于弹窗蒙版 10')
 
   // 视觉：贴右边缘的半悬浮按钮 + 主题阴影变量（无硬编码色值）
   const styleBlock = src.slice(src.indexOf('<style>'), src.lastIndexOf('</style>'))
   assert.match(styleBlock, /border-radius: 6px 0 0 6px/, '右边缘按钮左侧圆角')
   assert.match(styleBlock, /box-shadow: var\(--mm-shadow\)/, '阴影走主题变量')
+})
+
+test('mm-md-editor：排序面板不再显示拖动排序提示文字', () => {
+  const src = readText('components/mm-md-editor/mm-md-editor.vue')
+  assert.doesNotMatch(src, /按住条目拖动排序/,
+    '排序面板已删除「按住条目拖动排序，结果自动保存到云端」提示')
+  assert.doesNotMatch(src, /mm-tool-panel__tip/, '提示文字样式类也已移除')
 })
