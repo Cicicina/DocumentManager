@@ -38,9 +38,13 @@
       @click="handleSelect(node)"
     >
       <view class="mm-tree__arrow" @click.stop="toggle(node._id)">
+        <!-- 始终用 arrowright：展开时靠 CSS 顺时针旋转 90 度指向下方。
+             原实现按展开态切换图标 type，但目标图标在 uni-icons 渲染映射里没有对应 key，展开后箭头变空。 -->
         <uni-icons
           v-if="hasChildren(node._id)"
-          :type="isExpanded(node._id) ? 'arrowdown' : 'arrowright'"
+          class="mm-tree__chevron"
+          :class="{ 'is-expanded': isExpanded(node._id) }"
+          type="arrowright"
           size="12"
           color="var(--mm-text-weak)"
         />
@@ -269,6 +273,17 @@ defineExpose({ expandAll, collapseAll })
 
 .mm-tree__arrow.is-placeholder {
   visibility: hidden;
+}
+
+/* 展开动画：始终渲染向右箭头，展开态顺时针旋转 90 度指向下方。
+   rotation 加在图标自身而非命中区容器，避免连带旋转点击命中区与伪元素。 */
+.mm-tree__chevron {
+  transition: transform 0.18s ease;
+  transform-origin: center;
+}
+
+.mm-tree__chevron.is-expanded {
+  transform: rotate(90deg);
 }
 
 .mm-tree__folder-img {

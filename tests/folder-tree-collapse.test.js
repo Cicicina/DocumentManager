@@ -45,6 +45,31 @@ test('箭头命中区用伪元素扩到整行高度，视觉尺寸与布局保�
   assert.match(hit, /content:\s*''/, '空内容伪元素只承担命中区')
 })
 
+test('展开动画：始终用 arrowright，靠 is-expanded 类顺时针旋转 90 度而非切换图标', () => {
+  const src = source()
+  const css = src.slice(src.indexOf('<style'))
+
+  // uni-icons 的渲染映射里没有 arrowdown/arrowright 的 font_class，
+  // 展开时切 type 到 arrowdown 会渲染成空箭头。修复后固定 arrowright。
+  assert.doesNotMatch(src, /arrowdown/, '不再通过切换 type 到 arrowdown 表达展开态')
+  assert.match(src, /class="mm-tree__chevron"[\s\S]{0,120}:class="\{ 'is-expanded': isExpanded\(node\._id\) \}"[\s\S]{0,80}type="arrowright"/,
+    '箭头固定 arrowright，展开态由 is-expanded 类驱动')
+
+  const base = /\.mm-tree__chevron\s*\{([\s\S]*?)\}/.exec(css)
+  assert.ok(base, '应存在 .mm-tree__chevron 基础样式')
+  assert.match(base[1], /transition:\s*transform\s+0\.18s\s+ease/, 'transform 带过渡动画，展开/收起都有动画')
+
+  const expanded = /\.mm-tree__chevron\.is-expanded\s*\{([\s\S]*?)\}/.exec(css)
+  assert.ok(expanded, '应存在 .mm-tree__chevron.is-expanded 样式')
+  assert.match(expanded[1], /transform:\s*rotate\(90deg\)/, '顺时针 90 度：向右箭头旋转后指向下方')
+})
+
+test('旋转只作用于图标本身，不连带命中区容器', () => {
+  const css = source().slice(source().indexOf('<style'))
+  const arrowBlock = /\.mm-tree__arrow\s*\{([\s\S]*?)\}/.exec(css)[1]
+  assert.doesNotMatch(arrowBlock, /transform:/, '命中区容器不得设置 transform，避免旋转命中区与伪元素')
+})
+
 test('箭头容器高度表达式与行高完全一致，放大字号后仍覆盖整行', () => {
   const css = source().slice(source().indexOf('<style'))
   const rowBlock = /\.mm-tree__row\s*\{([\s\S]*?)\}/.exec(css)
