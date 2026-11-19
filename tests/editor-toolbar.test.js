@@ -224,9 +224,9 @@ test('mm-md-editor：更多按钮 fixed 在视口右侧并跟随工具条行/滚
   assert.match(src, /addEventListener\?.\('scroll', syncMoreBtnPos/, '滚动时重新对齐')
   assert.match(src, /addEventListener\?.\('resize', syncMoreBtnPos/, '窗口尺寸变化时重新对齐')
 
-  // 留白加在整条工具条上（非仅 toolbar-right），横滑到底/换行都不遮挡最后一个按钮
-  assert.match(src, /toolbar\.style\.paddingRight = 'calc\(32px \* var\(--mm-ui-scale, 1\)\)'/,
-    '整条工具条右侧预留按钮等宽留白')
+  // 留白由 App.vue 全局样式提供（组件内 <style> 带 data-v 命中不了 md-editor 内部 DOM）
+  assert.doesNotMatch(src, /toolbar\.style\.paddingRight/,
+    '组件内不再用 JS 内联设置留白（依赖 mount 时机，异步组件首帧拿不到 DOM）')
 
   // 层级：低于 wot 弹窗蒙版默认 zIndex(10)，避免按钮浮在蒙版上
   assert.match(src, /zIndex: '9'/, '按钮层级 9 低于弹窗蒙版 10')
@@ -235,6 +235,17 @@ test('mm-md-editor：更多按钮 fixed 在视口右侧并跟随工具条行/滚
   const styleBlock = src.slice(src.indexOf('<style>'), src.lastIndexOf('</style>'))
   assert.match(styleBlock, /border-radius: 6px 0 0 6px/, '右边缘按钮左侧圆角')
   assert.match(styleBlock, /box-shadow: var\(--mm-shadow\)/, '阴影走主题变量')
+})
+
+test('App.vue 全局样式：md-editor 工具条预留右侧空间，避免遮挡「源码地址」', () => {
+  const app = readText('App.vue')
+  // 组件内 <style> 会被 uni-app 加 [data-v-xxx]，命中不了 md-editor 异步组件内部 DOM；
+  // 只有 App.vue 的全局样式（编译产物无作用域）能生效。这里锁定留白规则落在全局样式。
+  const globalStyle = app.slice(app.indexOf('<style>'), app.lastIndexOf('</style>'))
+  assert.match(globalStyle, /\.mm-editor \.md-editor-toolbar-wrapper \.md-editor-toolbar\s*\{/,
+    '全局样式应命中 md-editor 工具条内部 DOM')
+  assert.match(globalStyle, /padding-right:\s*calc\(36px \* var\(--mm-ui-scale, 1\)\)/,
+    '预留 36px（按钮 32px + 余量），横滑到底不遮挡最后一个按钮')
 })
 
 test('mm-md-editor：排序面板不再显示拖动排序提示文字', () => {

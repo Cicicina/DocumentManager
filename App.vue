@@ -63,6 +63,16 @@
     box-sizing: border-box;
   }
 
+  /*
+   * md-editor 格式栏：为固定在视口右缘的「更多」按钮预留空间，
+   * 避免横向滚动到最右侧时挡住最后一个按钮（源码地址）。
+   * 必须写在 App.vue 全局样式：mm-md-editor 组件内的 <style> 会被 uni-app
+   * 追加 [data-v-xxx] 作用域，命中不了 md-editor 异步组件的内部 DOM。
+   */
+  .mm-editor .md-editor-toolbar-wrapper .md-editor-toolbar {
+    padding-right: calc(36px * var(--mm-ui-scale, 1));
+  }
+
   @font-face {
     font-family: "iconfont";
     src: url('https://at.alicdn.com/t/font_2354462_s00xh8caffp.ttf');

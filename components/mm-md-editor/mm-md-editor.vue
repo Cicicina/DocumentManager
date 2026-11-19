@@ -159,11 +159,10 @@ function syncMoreBtnPos() {
   moreBtnTop.value = Math.max(0, Math.round(rect.top + (rowHeight - MORE_BTN_SIZE) / 2))
   moreBtnVisible.value = rect.bottom > 0 && rect.top < viewH
 
-  // 整条工具条右侧预留与「更多」按钮等宽的留白（按钮固定贴视口右缘、宽 32px）。
-  // 之前只对 .md-editor-toolbar-right 加 padding，换行或横滑到底时最后一个按钮仍会被盖住；
-  // 加在整条工具条上可覆盖左/右两组及所有行。
-  // 工具条是 md-editor 内部 DOM（无本组件 scope 属性），用内联样式确保生效。
-  toolbar.style.paddingRight = 'calc(32px * var(--mm-ui-scale, 1))'
+  // 右侧留白由 App.vue 全局样式 .mm-editor .md-editor-toolbar 提供（36px）：
+  // 组件内 <style> 会被 uni-app 加 data-v 作用域，命中不了 md-editor 异步组件内部 DOM；
+  // JS 内联Setting padding 又依赖 mount 时机（异步组件首帧无 DOM），两者都不可靠。
+  // 全局 CSS 在组件加载即生效、不依赖时机，是留白的唯一来源。
 }
 
 /** 异步 MdEditor 首帧可能还没有工具条 DOM，重试几次直到量到位置 */
