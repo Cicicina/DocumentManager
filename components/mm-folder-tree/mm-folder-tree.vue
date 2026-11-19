@@ -242,13 +242,29 @@ defineExpose({ expandAll, collapseAll })
   padding-left: 6px;
 }
 
+/* 箭头容器占满整行高度（与 .mm-tree__row 同值），图标靠 flex 居中，
+   视觉位置不变，但手指点在箭头上下方也能命中 toggle。
+   原来固定 14x14，点在上下空白会落到行的 @click 变成「选中文件夹」，
+   表现为展开子目录后怎么点都收不起来。 */
 .mm-tree__arrow {
+  position: relative;
   width: 14px;
-  height: 14px;
+  height: calc(34px * var(--mm-ui-scale, 1));
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
+}
+
+/* 左右各扩一点命中区；右侧只到 gap，不遮住后面的文件夹图标。
+   伪元素不占布局，缩进与图标位置保持不变。 */
+.mm-tree__arrow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -4px;
+  bottom: 0;
+  left: -7px;
 }
 
 .mm-tree__arrow.is-placeholder {
