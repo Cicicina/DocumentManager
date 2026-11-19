@@ -209,3 +209,26 @@ test('mm-md-editor：mdToolbars 基于 store.config.toolbar_order 构建', () =>
   assert.match(src, /buildToolbars\(store\.state\.config\.toolbar_order\)/,
     '工具条顺序应来自全局配置（App.vue 启动时从云端读取）')
 })
+
+test('mm-md-editor：更多按钮 fixed 在视口右侧并跟随工具条行/滚动', () => {
+  const src = readText('components/mm-md-editor/mm-md-editor.vue')
+
+  // 固定定位三要素：内联 position/right + 测量工具条位置
+  assert.match(src, /:style="moreBtnStyle"/, '更多按钮应用动态定位样式')
+  assert.match(src, /position: 'fixed'/, '按钮脱离工具条流，fixed 到视口')
+  assert.match(src, /right: '0'/, '贴视口右边缘')
+  assert.match(src, /querySelector\('\.md-editor-toolbar'\)/, '测量工具条位置用于对齐')
+  assert.match(src, /getBoundingClientRect\(\)/, '运行时量取工具条在视口中的位置')
+  assert.match(src, /moreBtnVisible\.value = rect\.bottom > 0 && rect\.top < viewH/,
+    '工具条滚出视口时隐藏按钮，避免遮挡正文')
+  assert.match(src, /addEventListener\?.\('scroll', syncMoreBtnPos/, '滚动时重新对齐')
+  assert.match(src, /addEventListener\?.\('resize', syncMoreBtnPos/, '窗口尺寸变化时重新对齐')
+
+  assert.match(src, /querySelector\('\.md-editor-toolbar-right'\)/, '用 JS 给工具条内部 DOM 留白')
+  assert.match(src, /barRight\.style\.paddingRight/, '内联设置右侧留白，避免被 scope 属性拦截')
+
+  // 视觉：贴右边缘的半悬浮按钮 + 主题阴影变量（无硬编码色值）
+  const styleBlock = src.slice(src.indexOf('<style>'), src.lastIndexOf('</style>'))
+  assert.match(styleBlock, /border-radius: 6px 0 0 6px/, '右边缘按钮左侧圆角')
+  assert.match(styleBlock, /box-shadow: var\(--mm-shadow\)/, '阴影走主题变量')
+})

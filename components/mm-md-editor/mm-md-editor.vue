@@ -1,5 +1,5 @@
 <template>
-  <view class="mm-editor">
+  <view class="mm-editor" ref="editorHost">
     <component
       :is="MdEditor"
       v-if="MdEditor"
@@ -15,12 +15,13 @@
     >
       <!--
         自定义工具条项：md-editor 用 toolbars 数组里的数字索引取 defToolbars 的第 N 个节点。
-        mdToolbars 末尾固定追加 MORE_TOOLBAR_INDEX(0)，这里只放这一个节点，
-        因此「更多」按钮始终渲染在格式栏最右侧。
+        mdToolbars 末尾固定追加 MORE_TOOLBAR_INDEX(0)，这里只放这一个节点。
+        该节点通过 .mm-editor__tool-more 的 fixed 样式固定在视口右侧，不随工具条换行移动。
       -->
       <template #defToolbars>
         <view
           class="md-editor-toolbar-item mm-editor__tool-more"
+          :style="moreBtnStyle"
           title="调整工具栏顺序"
           aria-label="调整工具栏顺序"
           @click="openToolbarPanel"
@@ -84,7 +85,9 @@
  * 传 false 时组件内部会把输入区宽度置为 100% 并隐藏拖拽条，编辑器自然占满可用宽度，
  * 不需要额外设置 inputBoxWitdh；该 prop 不影响 v-model 与图片双态转换。
  */
-import { computed, defineAsyncComponent, ref } from 'vue'
+import {
+  computed, defineAsyncComponent, ref, onMounted, onUnmounted, nextTick
+} from 'vue'
 import { useAppStore } from '@/common/store/index.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
@@ -123,6 +126,63 @@ const store = useAppStore()
 
 /** MdEditor 组件实例：4.x 的 preview prop 只在初始化生效，运行时切换须调实例的 togglePreview */
 const editorInstance = ref(null)
+
+/** 编辑器根 DOM：用于测量工具条在视口中的位置 */
+const editorHost = ref(null)
+
+/**
+ * 「更多」按钮固定在视口右侧：
+ * 窄屏下格式栏会换行，按钮留在工具条流里位置不固定；这里让它 position:fixed
+ * 贴视口右边缘，并实时对齐工具条所在行。工具条滚出视口时自动隐藏，避免遮挡正文。
+ */
+const moreBtnTop = ref(0)
+const moreBtnVisible = ref(true)
+const MORE_BTN_SIZE = 28
+const moreBtnStyle = computed(() => ({
+  position: 'fixed',
+  right: '0',
+  top: `${moreBtnTop.value}px`,
+  zIndex: '20',
+  display: moreBtnVisible.value ? 'flex' : 'none'
+}))
+
+function syncMoreBtnPos() {
+  const host = editorHost.value && (editorHost.value.$el || editorHost.value)
+  if (!host || typeof host.querySelector !== 'function') return
+  const toolbar = host.querySelector('.md-editor-toolbar')
+  if (!toolbar || typeof toolbar.getBoundingClientRect !== 'function') return
+  const rect = toolbar.getBoundingClientRect()
+  const viewH = globalThis.innerHeight || 0
+  // 以工具条第一行为准对齐按钮垂直中心（换行后 rect.height 会变大，故取上限 34）
+  const rowHeight = Math.min(rect.height || MORE_BTN_SIZE, 34)
+  moreBtnTop.value = Math.max(0, Math.round(rect.top + (rowHeight - MORE_BTN_SIZE) / 2))
+  moreBtnVisible.value = rect.bottom > 0 && rect.top < viewH
+
+  // 右侧留白：工具条是 md-editor 内部 DOM（无本组件 scope 属性），用内联样式确保生效，
+  // 避免固定的「更多」按钮盖住最后一个格式按钮。
+  const barRight = host.querySelector('.md-editor-toolbar-right')
+  if (barRight) barRight.style.paddingRight = 'calc(32px * var(--mm-ui-scale, 1))'
+}
+
+/** 异步 MdEditor 首帧可能还没有工具条 DOM，重试几次直到量到位置 */
+let syncTimer = null
+function trySyncMoreBtn(retries = 8) {
+  syncMoreBtnPos()
+  if (moreBtnTop.value <= 0 && retries > 0) {
+    syncTimer = setTimeout(() => trySyncMoreBtn(retries - 1), 100)
+  }
+}
+
+onMounted(() => {
+  nextTick(() => trySyncMoreBtn())
+  globalThis.addEventListener?.('resize', syncMoreBtnPos)
+  globalThis.addEventListener?.('scroll', syncMoreBtnPos, true)
+})
+onUnmounted(() => {
+  if (syncTimer) clearTimeout(syncTimer)
+  globalThis.removeEventListener?.('resize', syncMoreBtnPos)
+  globalThis.removeEventListener?.('scroll', syncMoreBtnPos, true)
+})
 
 // ---------------- 格式栏顺序（云端持久化 + 拖动排序） ----------------
 /**
@@ -424,9 +484,24 @@ defineExpose({ insertImage, toStorageState, toDisplayState, togglePreview, scrol
 </style>
 
 <style>
-/* md-editor 内部 DOM：排序面板由 wd-popup 挂到 body，取消编辑器内的换行覆盖对它的影响 */
-.md-editor-toolbar-item.mm-editor__tool-more {
-  min-width: calc(24px * var(--mm-ui-scale, 1));
+/*
+ * 「更多」按钮固定在视口右侧（定位属性由 moreBtnStyle 内联设置）：
+ * 脱离工具条 flex 流后需自带尺寸/背景/圆角，形成贴右边缘的半悬浮按钮。
+ * 用 .mm-editor 前缀提高特异性，覆盖 md-editor 的 .md-editor-toolbar-item 基础样式。
+ */
+.mm-editor .md-editor-toolbar-item.mm-editor__tool-more {
+  box-sizing: border-box;
+  width: calc(32px * var(--mm-ui-scale, 1));
+  height: calc(28px * var(--mm-ui-scale, 1));
+  min-width: calc(32px * var(--mm-ui-scale, 1));
+  margin: 0;
+  padding: 0;
+  justify-content: center;
+  background-color: var(--mm-surface);
+  border: 1px solid var(--mm-border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  box-shadow: var(--mm-shadow);
 }
 </style>
 
