@@ -105,6 +105,7 @@ import { computed, ref, watch } from 'vue'
 import { useAppStore } from '@/common/store/index.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
+import { toast } from '@/common/utils/toast.js'
 import { uploadCloudFile } from '@/common/utils/upload.js'
 import { WOT_ICON_GROUPS, WOT_ICON_NAMES } from '@/common/utils/wot-icons.js'
 import { buildIconfontUrl, openExternalLink, ICONFONT_HOME } from '@/common/utils/external-link.js'
@@ -201,7 +202,7 @@ function chooseCustom() {
         draft.value = { type: 'custom', value: fileID, url: filePath }
         customPreview.value = filePath
       } catch (error) {
-        uni.showToast({ title: '上传失败，请重试', icon: 'none' })
+        toast.error('上传失败，请重试')
       }
     }
   })

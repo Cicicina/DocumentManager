@@ -56,6 +56,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { listTrash, restore, purgeDelete } from '@/common/api/mm-file.js'
+import { toast } from '@/common/utils/toast.js'
 import { useConfirm } from '@/common/utils/confirm.js'
 
 const { confirm } = useConfirm('mm-trash')
@@ -107,7 +108,7 @@ async function restoreSelected() {
   if (selection.value.length === 0) return
   const res = await restore({ file_ids: selection.value.slice() })
   if (res.code === 0) {
-    uni.showToast({ title: '已还原', icon: 'none' })
+    toast.success('已还原')
     selection.value = []
     await refresh()
     emit('changed')
@@ -125,7 +126,7 @@ function purgeSelected() {
     if (!ok) return
     const res = await purgeDelete({ file_ids: selection.value.slice() })
     if (res.code === 0) {
-      uni.showToast({ title: '已彻底删除', icon: 'none' })
+      toast.success('已彻底删除')
       selection.value = []
       await refresh()
       emit('changed')

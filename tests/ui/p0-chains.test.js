@@ -58,7 +58,8 @@ test('导出链路：exportFile → tempUrl 兜底 → 空内容中止 → 显�
 
   const idxExport = body.indexOf('exportFile(')
   const idxFetch = body.indexOf('fetch(res.data.tempUrl)')
-  const idxGuard = body.indexOf("toast.show('导出失败，请重试')")
+  // 空内容提示改为 error 类型（wot 错误图标），兼容旧的 show 写法
+  const idxGuard = body.search(/toast\.(?:error|show)\('导出失败，请重试'\)/)
   const idxResolve = body.indexOf('resolveImageUrlsForText(')
   const idxReplace = body.indexOf('mm-image:\\/\\/')
   const idxDownload = body.indexOf('downloadMarkdown(')

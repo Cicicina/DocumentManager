@@ -62,6 +62,7 @@ import { computed, ref, watch } from 'vue'
 import { list as listImages, getTempUrlsBatched, getTempUrls, register as registerImage, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
+import { toast } from '@/common/utils/toast.js'
 import { uploadCloudFile } from '@/common/utils/upload.js'
 import { formatSize } from '@/common/utils/format.js'
 import { useImageDragSort } from '@/common/utils/drag-order.js'
@@ -151,7 +152,7 @@ function chooseNew() {
         emit('select', { fileId: fileID, name, tempUrl })
         emit('update:visible', false)
       } catch (error) {
-        uni.showToast({ title: '上传失败，请重试', icon: 'none' })
+        toast.error('上传失败，请重试')
       }
     }
   })

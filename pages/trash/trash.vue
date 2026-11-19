@@ -1,7 +1,7 @@
 <template>
   <view class="mm-trash-page">
     <mm-trash @changed="handleChanged" />
-    <wd-toast />
+    <mm-global-toast />
   </view>
 </template>
 

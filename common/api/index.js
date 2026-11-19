@@ -24,6 +24,7 @@
  *   因此「只弹提示、不清态、不跳登录页」。现改为异常路径同样进入失效处理。
  */
 import { ERR, ERR_MESSAGE } from '@/common/constants.js'
+import { toast } from '@/common/utils/toast.js'
 
 /** 云对象键 → 云对象名 */
 const OBJECT_NAMES = {
@@ -126,12 +127,13 @@ export function normalize(res) {
  * @returns {void}
  */
 function showErrorToast(message) {
-  if (typeof uni === 'undefined' || !uni || typeof uni.showToast !== 'function') return
   const text = message || ERR_MESSAGE[ERR.INTERNAL_ERROR]
   const now = Date.now()
   if (now - (lastToastAt[text] || 0) < TOAST_THROTTLE_MS) return
   lastToastAt[text] = now
-  uni.showToast({ title: text, icon: 'none' })
+  // 统一走 wot toast 命令总线：有组件挂载时渲染带错误图标的 wot toast，
+  // 无组件（测试 / 非 H5）时总线自动回退到 uni.showToast，不丢提示。
+  toast.error(text)
 }
 
 /**

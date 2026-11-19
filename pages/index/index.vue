@@ -499,7 +499,7 @@
     </wd-popup>
 
     <!-- 轻提示 / 确认框挂载点（必需） -->
-    <wd-toast />
+    <mm-global-toast />
     <wd-message-box selector="mm-index" />
   </view>
 </template>
@@ -516,7 +516,7 @@
  */
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { useToast } from 'wot-design-uni'
+import { toast } from '@/common/utils/toast.js'
 import { useConfirm } from '@/common/utils/confirm.js'
 import { useAppStore } from '@/common/store/index.js'
 import { ANONYMOUS_USER_ID, CLOUD_PATH } from '@/common/constants.js'
@@ -560,7 +560,6 @@ import {
 } from '@/common/api/index.js'
 
 const store = useAppStore()
-const toast = useToast()
 const { confirm } = useConfirm('mm-index')
 
 /**
@@ -1104,7 +1103,7 @@ function logout() {
   // 主动退出后复位守卫，保证本页后续仍能正常引导重新登录
   resetLoginGuard()
   loginGuardDone = false
-  uni.showToast({ title: '已退出登录', icon: 'none' })
+  toast.success('已退出登录')
   setTimeout(goLogin, 400)
 }
 
@@ -1241,9 +1240,16 @@ async function reloadComments(fileId) {
 }
 
 // ---------------- 目录树交互 ----------------
-function handleFolderSelect(node) {
+async function handleFolderSelect(node) {
   currentFolderId.value = node ? node._id : ''
-  loadFiles(currentFolderId.value)
+  // 切换文件夹要重新拉取该目录的文档列表；等待期间用 wot loading，
+  // 列表加载完成后 close（独立实例，不影响其它短提示）。
+  toast.loading('正在加载文件夹…')
+  try {
+    await loadFiles(currentFolderId.value)
+  } finally {
+    toast.close()
+  }
 }
 
 function handleDrawerFolderSelect(node) {
@@ -1257,7 +1263,7 @@ async function handleCreateFolder({ parent_id }) {
   if (!name) return
   const res = await createFolder({ parent_id: parent_id || '', name })
   if (res.code === 0) {
-    toast.show('已创建')
+    toast.success('已创建')
     await loadTree()
   }
 }
@@ -1268,7 +1274,7 @@ async function handleRenameFolder(node) {
   if (!name) return
   const res = await rename({ file_id: node._id, name })
   if (res.code === 0) {
-    toast.show('已重命名')
+    toast.success('已重命名')
     await loadTree()
     await loadFiles(currentFolderId.value)
   }
@@ -1280,7 +1286,7 @@ function handleRemoveFolder(node) {
     if (!ok) return
     const result = await softDelete({ file_ids: [node._id] })
     if (result.code === 0) {
-      toast.show('已移入回收站')
+      toast.success('已移入回收站')
       await loadTree()
       await loadFiles(currentFolderId.value)
     }
@@ -1333,7 +1339,7 @@ async function handleRenameRoot() {
   const res = await updateRoot({ name })
   if (res.code === 0 && res.data) {
     store.setConfig(res.data)
-    toast.show('已重命名')
+    toast.success('已重命名')
   }
 }
 
@@ -1364,7 +1370,7 @@ async function handleIconConfirm(icon) {
   const cloudIcon = toCloudIcon(icon)
   // 结构非法时给出具体原因；合法请求失败时 call() 已弹出云端文案，不重复提示
   if (icon && !cloudIcon) {
-    toast.show('图标格式不正确，请重新选择')
+    toast.error('图标格式不正确，请重新选择')
     iconPickerTarget.value = null
     return
   }
@@ -1374,14 +1380,14 @@ async function handleIconConfirm(icon) {
     if (rootRes.code === 0 && rootRes.data) {
       store.setConfig(rootRes.data)
       await loadRootIconUrl()
-      toast.show('图标已更新')
+      toast.success('图标已更新')
     }
     iconPickerTarget.value = null
     return
   }
   const res = await updateIcon({ folder_id: target._id, icon: cloudIcon })
   if (res.code === 0) {
-    toast.show('图标已更新')
+    toast.success('图标已更新')
     await loadTree()
   }
   iconPickerTarget.value = null
@@ -1390,41 +1396,51 @@ async function handleIconConfirm(icon) {
 // ---------------- 文件交互 ----------------
 async function openDocument(file) {
   if (!file) return
-  // 本地正常打开的文档恢复可编辑；分享只读标记只由 resolveShare 设置
-  shareReadOnly.value = false
-  const res = await getContent({ file_id: file._id })
-  if (res.code !== 0 || !res.data) return
-  let content = res.data.content || ''
-  let readError = res.data.error || ''
-  if (!content && res.data.tempUrl && typeof fetch === 'function') {
-    try {
-      const response = await fetch(res.data.tempUrl)
-      content = await response.text()
-    } catch (error) {
-      readError = '内容下载失败：' + ((error && error.message) || '可能是云存储跨域限制')
-      content = ''
+  // 打开文档要拉取正文、批注与图片链接，期间用 wot loading 遮罩；
+  // 无论成功失败都在 finally 关闭，避免转圈卡死。
+  toast.loading('正在打开文档…')
+  let pendingError = ''
+  try {
+    // 本地正常打开的文档恢复可编辑；分享只读标记只由 resolveShare 设置
+    shareReadOnly.value = false
+    const res = await getContent({ file_id: file._id })
+    if (res.code !== 0 || !res.data) return
+    let content = res.data.content || ''
+    let readError = res.data.error || ''
+    if (!content && res.data.tempUrl && typeof fetch === 'function') {
+      try {
+        const response = await fetch(res.data.tempUrl)
+        content = await response.text()
+      } catch (error) {
+        readError = '内容下载失败：' + ((error && error.message) || '可能是云存储跨域限制')
+        content = ''
+      }
     }
+    store.openFile(res.data.doc, content, [])
+    await Promise.all([reloadComments(file._id), loadImageUrlMap(content)])
+    mode.value = 'read'
+    activeCommentId.value = ''
+    // 换文档后旧锚点坐标系失效，必须清空
+    annotationSelection.value = null
+    hasActiveSelection.value = false
+    commentDetailVisible.value = false
+    saveStatus.value = 'saved'
+    // 新正文的滚动位置与可用标题都变了：重新量一次并回到顶部
+    activeOutlineIndex.value = -1
+    scrollHost = null
+    nextTick(() => {
+      measureScroll()
+      if (scrollHost) scrollHost.scrollTop = 0
+      measureScroll()
+    })
+    if (!content) pendingError = readError || '未读取到文档内容'
+  } catch (error) {
+    pendingError = (error && (error.message || error.errMsg)) || '打开文档失败，请重试'
+  } finally {
+    toast.close()
   }
-  store.openFile(res.data.doc, content, [])
-  await Promise.all([reloadComments(file._id), loadImageUrlMap(content)])
-  mode.value = 'read'
-  activeCommentId.value = ''
-  // 换文档后旧锚点坐标系失效，必须清空
-  annotationSelection.value = null
-  hasActiveSelection.value = false
-  commentDetailVisible.value = false
-  saveStatus.value = 'saved'
-  // 新正文的滚动位置与可用标题都变了：重新量一次并回到顶部
-  activeOutlineIndex.value = -1
-  scrollHost = null
-  nextTick(() => {
-    measureScroll()
-    if (scrollHost) scrollHost.scrollTop = 0
-    measureScroll()
-  })
-  if (!content) {
-    toast.show(readError || '未读取到文档内容')
-  }
+  // loading 的 close 会关掉当前 toast，错误提示必须在 close 之后再发
+  if (pendingError) toast.error(pendingError)
 }
 
 function handleOpenFile(file) {
@@ -1442,7 +1458,7 @@ function handleBatchDelete(ids) {
     if (!ok) return
     const result = await softDelete({ file_ids: ids })
     if (result.code === 0) {
-      toast.show('已移入回收站')
+      toast.success('已移入回收站')
       await loadFiles(currentFolderId.value)
       await loadTree()
     }
@@ -1458,7 +1474,7 @@ async function handleRenameFile(file) {
   if (!name || name === file.name) return
   const res = await rename({ file_id: file._id, name })
   if (res.code === 0) {
-    toast.show('已重命名')
+    toast.success('已重命名')
     await loadFiles(currentFolderId.value)
     if (store.state.currentFile && store.state.currentFile._id === file._id && res.data) {
       store.openFile(
@@ -1657,7 +1673,7 @@ async function chooseMoveTarget(target) {
   if (!source || !target || target.disabled) return
   const res = await move({ file_id: source._id, parent_id: target._id || '' })
   if (res.code === 0) {
-    toast.show('已移动')
+    toast.success('已移动')
     moveVisible.value = false
     moveSource.value = null
     await Promise.all([loadTree(), loadFiles(currentFolderId.value)])
@@ -1695,14 +1711,14 @@ async function handleExport(file) {
     }
   }
   if (!content) {
-    toast.show('导出失败，请重试')
+    toast.error('导出失败，请重试')
     return
   }
 
   const urlMap = await resolveImageUrlsForText(content)
   const displayContent = content.replace(/mm-image:\/\/([^\s)'"]+)/g, (matched, fileId) => urlMap[fileId] || matched)
   downloadMarkdown(res.data.name || file.name, displayContent)
-  toast.show('已导出')
+  toast.success('已导出')
 }
 
 // ---------------- 上传 / 导入 ----------------
@@ -1745,7 +1761,7 @@ async function handleCreateFile() {
     await openDocument(res.data)
     mode.value = 'edit'
   } catch (error) {
-    toast.show('新建失败，请重试')
+    toast.error('新建失败，请重试')
   }
   // #endif
   // #ifndef H5
@@ -1800,7 +1816,7 @@ function handleUpload() {
         await loadFiles(currentFolderId.value)
         await loadTree()
       } else {
-        toast.show('上传失败，请重试')
+        toast.error('上传失败，请重试')
       }
     }
   })
@@ -1826,12 +1842,12 @@ function handleImport() {
           content
         })
         if (res.code === 0) {
-          toast.show('导入成功')
+          toast.success('导入成功')
           await loadFiles(currentFolderId.value)
           await loadTree()
         }
       } catch (error) {
-        toast.show('导入失败，请重试')
+        toast.error('导入失败，请重试')
       }
     }
   })
@@ -1869,7 +1885,7 @@ async function handleSave() {
     return
   }
   saveStatus.value = 'dirty'
-  toast.show(res.message || '保存失败，请重试')
+  toast.error(res.message || '保存失败，请重试')
 }
 
 async function applySaveSuccess(file, data) {
@@ -1888,7 +1904,7 @@ async function applySaveSuccess(file, data) {
     store.state.comments
   )
   await reloadComments(file._id)
-  toast.show('已保存')
+  toast.success('已保存')
   // 图片引用追踪：以刚保存的正文对齐引用表。静默失败不干扰保存成功提示，
   // 且该方法幂等——下次保存成功时会自动补正。
   syncRefs({ doc_id: file._id, content: store.state.editorContent }).catch(() => {})
@@ -1908,7 +1924,7 @@ async function handleConflictOverwrite() {
   if (res.code === 0) applySaveSuccess(file, res.data)
   else {
     saveStatus.value = 'dirty'
-    toast.show(res.message || '保存失败，请重试')
+    toast.error(res.message || '保存失败，请重试')
   }
 }
 
@@ -1941,7 +1957,7 @@ async function handleCreateComment(payload) {
     comment: selection.comment
   })
   if (res.code === 0) {
-    toast.show('批注已添加')
+    toast.success('批注已添加')
     await reloadComments(file._id)
   }
 }
@@ -1958,7 +1974,7 @@ async function handleRemoveComment({ comment_id }) {
   if (!file) return
   const res = await removeComment({ comment_id })
   if (res.code === 0) {
-    toast.show('批注已删除')
+    toast.success('批注已删除')
     await reloadComments(file._id)
   }
 }
@@ -2178,10 +2194,10 @@ async function confirmShare() {
     const res = await createShare({ file_id: target._id, expire_seconds: shareExpire.value })
     if (res.code === 0 && res.data && res.data.token) {
       const copied = await writeShareUrl(res.data.token)
-      toast.show(copied ? '链接已复制' : '分享链接已创建')
+      copied ? toast.success('链接已复制') : toast.success('分享链接已创建')
       shareVisible.value = false
     } else {
-      toast.show(res.message || '分享创建失败，请重试')
+      toast.error(res.message || '分享创建失败，请重试')
     }
   } finally {
     shareCreating.value = false
@@ -2263,7 +2279,7 @@ async function resolveShare() {
     const { openShare } = await import('@/common/api/mm-share.js')
     const res = await openShare({ token })
     if (res.code !== 0 || !res.data) {
-      toast.show(res.message || '分享链接无效')
+      toast.error(res.message || '分享链接无效')
       shareHandled.delete(token)
       clearShareTokenFromUrl()
       return
@@ -2339,7 +2355,7 @@ async function inspectClipboard() {
   if (agreed) {
     // 只改 store，让既有 watch 置 dirty，由用户用现有保存按钮提交
     store.setEditor(`${store.state.editorContent}\n\n${text}`)
-    toast.show('已追加，请点击保存')
+    toast.success('已追加，请点击保存')
   }
 }
 
@@ -2405,7 +2421,7 @@ async function handleImageSelect({ fileId, name, tempUrl }) {
     const current = store.state.editorContent
     store.setEditor(`${current}${current ? '\n' : ''}${token}\n`)
   }
-  toast.show('已插入图片')
+  toast.success('已插入图片')
 }
 
 /**

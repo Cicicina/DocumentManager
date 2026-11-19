@@ -106,7 +106,15 @@ function createPageDeps(options) {
     onShow: cb => { calls.lifecycles.onShow = cb },
     onMounted: cb => { calls.lifecycles.onMounted = cb },
     onUnmounted: cb => { calls.lifecycles.onUnmounted = cb },
-    useToast: () => ({ show: text => calls.toasts.push(text) }),
+    toast: {
+      show: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      success: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      error: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      warning: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      info: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      loading: text => calls.toasts.push({ title: typeof text === 'string' ? text : (text && text.msg) || '' }),
+      close: () => {}
+    },
     useConfirm: () => ({ confirm: async () => false }),
     useAppStore: () => store,
     // 真实常量
@@ -439,7 +447,7 @@ test('logout()：清本地凭据、置空身份并复位守卫标记', async () 
     config: { account_enabled: true },
     storage: { uni_id_token: 'token-1', uni_id_token_expired: Date.now() + 60000 },
     user: { uid: 'u1' }
-  }, async ({ env, state, page, api }) => {
+  }, async ({ env, calls, state, page, api }) => {
     // 先置位幂等标记
     api.handleLoginExpired()
     env.flushTimers()
@@ -450,7 +458,8 @@ test('logout()：清本地凭据、置空身份并复位守卫标记', async () 
     assert.equal(page.isLoggedIn.value, false)
     assert.ok(env.calls.removed.includes('uni_id_token'))
     assert.ok(env.calls.removed.includes('uni_id_token_expired'))
-    assert.ok(env.calls.toasts.some(item => item.title === '已退出登录'))
+    // 退出提示现在走全局 toast 总线（页面级 mock），不再是 uni.showToast（全局 mock）
+    assert.ok(calls.toasts.some(item => item.title === '已退出登录'))
     env.flushTimers() // logout 内部 400ms 后 goLogin
 
     // 复位后新一轮失效仍能被引导（证明 resetLoginGuard 被调用）
@@ -500,11 +509,15 @@ test('源码复核：api/index.js 的导出与全项目所有 import 点逐项�
 test('源码复核：无循环依赖、无重复实现，callSilent / clearLoginCredentials 边界正确', () => {
   const source = readText('common/api/index.js')
 
-  // index.js 只依赖 constants.js，业务封装只依赖 index.js：单向，无环
+  // index.js 只依赖 constants.js 与零依赖的底层工具 toast.js，业务封装只依赖
+  // index.js：单向，无环。toast.js 本身不 import 任何 api，故不构成反向依赖。
   const imports = Array.from(
     source.matchAll(/^[ \t]*import[\s\S]*?from\s*['"]([^'"]+)['"][ \t]*;?[ \t]*$/gm)
   ).map(item => item[1])
-  assert.deepEqual(imports, ['@/common/constants.js'], 'index.js 不应反向依赖任何业务封装')
+  assert.deepEqual(imports, ['@/common/constants.js', '@/common/utils/toast.js'],
+    'index.js 只应依赖 constants 与底层 toast 工具，不得反向依赖业务封装')
+  assert.ok(!/from\s*['"]@\/common\/api\//.test(readText('common/utils/toast.js')),
+    'toast.js 不得依赖 api，否则形成环')
 
   const apiDir = path.join(ROOT, 'common', 'api')
   const files = fs.readdirSync(apiDir)

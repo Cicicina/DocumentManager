@@ -58,7 +58,7 @@
     </view>
 
     <!-- 轻提示挂载点（必需） -->
-    <wd-toast />
+    <mm-global-toast />
   </view>
 </template>
 

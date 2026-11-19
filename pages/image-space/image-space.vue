@@ -40,7 +40,7 @@
       </view>
     </view>
 
-    <wd-toast />
+    <mm-global-toast />
     <wd-message-box selector="mm-image-space" />
   </view>
 </template>
@@ -52,6 +52,7 @@
  */
 import { onMounted, ref } from 'vue'
 import { formatSize } from '@/common/utils/format.js'
+import { toast } from '@/common/utils/toast.js'
 import { list as listImages, getTempUrlsBatched, remove as removeImages, removeSilent, reorder as reorderImages } from '@/common/api/mm-image.js'
 import { useImageDragSort } from '@/common/utils/drag-order.js'
 import { useConfirm } from '@/common/utils/confirm.js'
@@ -76,7 +77,7 @@ const { draggingId, startDrag, shouldIgnoreClick } = useImageDragSort(
     const res = await reorderImages({ items: payload })
     if (res.code === 0) {
       imageList.value = items.map((item, index) => ({ ...item, order: total - index }))
-      uni.showToast({ title: '顺序已保存', icon: 'none' })
+      toast.success('顺序已保存')
     } else {
       await loadImages()
     }
@@ -136,7 +137,7 @@ function imageTitle(item) {
 async function removeImage(item) {
   const first = await removeSilent({ image_ids: [item._id] })
   if (first.code === 0) {
-    uni.showToast({ title: '已清理', icon: 'none' })
+    toast.success('已清理')
     await loadImages()
     return
   }
@@ -157,7 +158,7 @@ async function removeImage(item) {
     if (!ok) return
     const second = await removeImages({ image_ids: [item._id], force: true })
     if (second.code === 0) {
-      uni.showToast({ title: '已清理', icon: 'none' })
+      toast.success('已清理')
       await loadImages()
     }
   })

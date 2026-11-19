@@ -53,6 +53,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { getSelectionOffsets } from '@/common/utils/selection.js'
+import { toast } from '@/common/utils/toast.js'
 import { useConfirm } from '@/common/utils/confirm.js'
 
 const { confirm } = useConfirm('mm-annotation')
@@ -155,7 +156,7 @@ function startAdd() {
   // #ifdef H5
   const container = document.querySelector('.mm-viewer__body')
   if (!container) {
-    uni.showToast({ title: '请先打开文档', icon: 'none' })
+    toast.show('请先打开文档')
     return
   }
   // 现场选区优先；按钮点击已把选区折叠时，回退到 selectionchange 缓存的锚点
@@ -163,10 +164,7 @@ function startAdd() {
   if (!offsets) {
     const selection = typeof window !== 'undefined' ? window.getSelection() : null
     const hasLiveSelection = !!(selection && selection.rangeCount > 0 && !selection.isCollapsed)
-    uni.showToast({
-      title: hasLiveSelection ? '该位置不支持批注' : '请先在正文中选中文字',
-      icon: 'none'
-    })
+    toast.show(hasLiveSelection ? '该位置不支持批注' : '请先在正文中选中文字')
     return
   }
   pendingOffsets.value = offsets
@@ -196,7 +194,7 @@ function confirmRemove(item) {
 function submitDialog() {
   const text = String(dialogText.value || '').trim()
   if (!text) {
-    uni.showToast({ title: '批注内容不能为空', icon: 'none' })
+    toast.show('批注内容不能为空')
     return
   }
   if (editingId.value) {

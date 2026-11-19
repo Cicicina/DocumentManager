@@ -3,7 +3,7 @@
     <view class="mm-share-page__inner">
       <mm-share-manager @changed="noop" />
     </view>
-    <wd-toast />
+    <mm-global-toast />
   </view>
 </template>
 

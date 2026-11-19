@@ -246,10 +246,27 @@ async function loadInjectedModule(source, options) {
  * @returns {Promise<{module:object, exposed:object}>}
  */
 async function loadApiModule(constants, expose) {
+  // toast 命令总线的测试替身：内部落回 uni.showToast，使既有断言
+  // calls.toasts[].title 保持不变；真实 H5 由 <mm-global-toast /> 消费命令。
+  const toastStub = {
+    show: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    success: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    error: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    warning: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    info: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    loading: text => globalThis.uni.showToast({ title: toText(text), icon: 'none' }),
+    close: () => {}
+  }
   return loadInjectedModule(readText('common/api/index.js'), {
-    deps: { ERR: constants.ERR, ERR_MESSAGE: constants.ERR_MESSAGE },
+    deps: { ERR: constants.ERR, ERR_MESSAGE: constants.ERR_MESSAGE, toast: toastStub },
     expose
   })
+}
+
+/** toast 参数可能是字符串或 {msg/title} 对象，统一取文案 */
+function toText(payload) {
+  if (typeof payload === 'string') return payload
+  return (payload && (payload.msg || payload.title)) || ''
 }
 
 module.exports = {

@@ -43,6 +43,7 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import { useAppStore } from '@/common/store/index.js'
 import { CLOUD_PATH } from '@/common/constants.js'
 import { genUuid } from '@/common/utils/uuid.js'
+import { toast } from '@/common/utils/toast.js'
 import { register as registerImage, getTempUrls } from '@/common/api/mm-image.js'
 // md-editor-v3 4.x 的全局样式（4.x 起路径为 lib/style.css）
 import 'md-editor-v3/lib/style.css'
@@ -145,7 +146,7 @@ async function handleUploadImg(files, callBack) {
         urls.push(tempUrl)
       }
     } catch (error) {
-      uni.showToast({ title: '图片上传失败，请重试', icon: 'none' })
+      toast.error('图片上传失败，请重试')
     }
   }
 

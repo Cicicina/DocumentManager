@@ -47,6 +47,7 @@
 import { onMounted, ref } from 'vue'
 import { listShares, revokeShare } from '@/common/api/mm-share.js'
 import { writeShareUrl } from '@/common/utils/clipboard.js'
+import { toast } from '@/common/utils/toast.js'
 import { useConfirm } from '@/common/utils/confirm.js'
 
 const { confirm } = useConfirm('mm-shares')
@@ -81,7 +82,7 @@ async function refresh() {
 }
 
 function toastError(message) {
-  uni.showToast({ title: message || '操作失败', icon: 'none' })
+  toast.error(message || '操作失败')
 }
 
 /** 状态文案 */
@@ -108,7 +109,8 @@ function formatTime(value) {
 
 async function copyLink(item) {
   const copied = await writeShareUrl(item.token)
-  uni.showToast({ title: copied ? '链接已复制' : '复制失败，请重试', icon: 'none' })
+  if (copied) toast.success('链接已复制')
+  else toast.error('复制失败，请重试')
 }
 
 async function revokeItem(item) {
@@ -123,7 +125,7 @@ async function revokeItem(item) {
   if (res.code === 0) {
     item.status = 'revoked'
     item.revoked = true
-    uni.showToast({ title: '已作废', icon: 'none' })
+    toast.success('已作废')
     emit('changed')
   } else {
     toastError(res.message || '作废失败，请重试')
