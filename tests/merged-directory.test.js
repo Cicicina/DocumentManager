@@ -121,3 +121,50 @@ test('index.vue：启动先载入缓存，再拉云端目录，最后逐一核�
   assert.match(src, /handleToggleDirectoryFolder[\s\S]{0,300}persistDirectoryCache\(\)/,
     '展开状态立即持久化')
 })
+
+test('mm-directory：文件行名字/修改时间/大小同一行，标签另起一行且无标签不渲染', () => {
+  const { src } = compile('components/mm-directory/mm-directory.vue')
+  const fileRow = src.slice(src.indexOf('v-else'), src.indexOf('</template>'))
+
+  // 首行容器把名字、时间、大小放在同一行
+  const firstLine = fileRow.slice(
+    fileRow.indexOf('class="mm-dir__file-line"'),
+    fileRow.indexOf('<!-- 标签另起一行')
+  )
+  assert.match(firstLine, /class="mm-dir__name"/, '首行含文件名')
+  assert.match(firstLine, /formatTime\(node\.data\.updated_at\)/, '首行含修改时间')
+  assert.match(firstLine, /formatSize\(node\.data\.size\)/, '首行含文件大小')
+  assert.doesNotMatch(firstLine, /mm-dir__tags/, '标签不在首行内')
+
+  // 标签在首行容器之外，且有无标签守卫，无标签时整行不渲染
+  const tagsLine = fileRow.slice(fileRow.indexOf('<!-- 标签另起一行'))
+  assert.match(tagsLine, /v-if="node\.data\.tags && node\.data\.tags\.length"/, '标签行有非空守卫')
+  assert.match(tagsLine, /class="mm-dir__tags"/, '标签独立成行')
+  assert.doesNotMatch(tagsLine, /formatTime\(|formatSize\(|class="mm-dir__name"/, '标签行不含名字/时间/大小')
+})
+
+test('mm-directory：文件行纵向布局，基础行高低于通用行，标签缩进对齐名字', () => {
+  const { src } = compile('components/mm-directory/mm-directory.vue')
+  const style = src.slice(src.indexOf('<style scoped>'), src.indexOf('</style>'))
+
+  assert.match(src, /class="mm-dir__row mm-dir__row--file"/, '文件行带独立修饰类')
+  const fileRow = /\.mm-dir__row--file\s*\{([\s\S]*?)\}/.exec(style)
+  assert.ok(fileRow, '存在文件行样式块')
+  assert.match(fileRow[1], /flex-direction:\s*column/, '文件行改为纵向容器')
+  assert.match(fileRow[1], /min-height:\s*0/, '不再继承通用行的最小高度')
+
+  const fileLine = /\.mm-dir__file-line\s*\{([\s\S]*?)\}/.exec(style)
+  assert.ok(fileLine, '存在首行样式块')
+  assert.match(fileLine[1], /display:\s*flex/, '首行是横向 flex，容纳名字/时间/大小')
+
+  // 文件行 32px < 通用行 40px：无标签时整行更紧凑
+  const baseRow = /\.mm-dir__row\s*\{([\s\S]*?)\}/.exec(style)
+  assert.ok(baseRow && /min-height:\s*calc\(40px/.test(baseRow[1]), '通用行仍为 40px')
+  assert.match(fileLine[1], /min-height:\s*calc\(32px/, '文件首行降到 32px')
+
+  assert.doesNotMatch(style, /\.mm-dir__main/, '旧的 main 包装样式已移除')
+  const tags = /\.mm-dir__tags\s*\{([\s\S]*?)\}/.exec(style)
+  assert.ok(tags, '存在标签行样式块')
+  assert.match(tags[1], /padding-left:\s*calc\(41px \* var\(--mm-ui-scale, 1\)\)/,
+    '标签缩进到与文件名对齐（14 箭头 + 6 间距 + 15 复选框 + 6 间距）')
+})

@@ -100,33 +100,35 @@
 
         <view
           v-else
-          class="mm-dir__row"
+          class="mm-dir__row mm-dir__row--file"
           :style="rowStyle(node.depth)"
           @click="emit('open', node.data)"
         >
-          <view class="mm-dir__arrow is-placeholder" />
-          <view
-            class="mm-dir__check"
-            :class="{ 'is-checked': isSelected(node.data._id) }"
-            @click.stop="toggleSelect(node.data._id)"
-          >
-            <uni-icons
-              v-if="isSelected(node.data._id)"
-              type="checkmarkempty"
-              size="11"
-              color="var(--mm-surface)"
-            />
-          </view>
-          <view class="mm-dir__main">
+          <!-- 首行：名字 / 修改时间 / 文件大小排在同一行 -->
+          <view class="mm-dir__file-line">
+            <view class="mm-dir__arrow is-placeholder" />
+            <view
+              class="mm-dir__check"
+              :class="{ 'is-checked': isSelected(node.data._id) }"
+              @click.stop="toggleSelect(node.data._id)"
+            >
+              <uni-icons
+                v-if="isSelected(node.data._id)"
+                type="checkmarkempty"
+                size="11"
+                color="var(--mm-surface)"
+              />
+            </view>
             <text class="mm-dir__name">{{ node.data.name }}</text>
-            <view v-if="node.data.tags && node.data.tags.length" class="mm-dir__tags">
-              <wd-tag v-for="tag in node.data.tags.slice(0, 3)" :key="tag" plain size="small">{{ tag }}</wd-tag>
+            <text class="mm-dir__meta">{{ formatTime(node.data.updated_at) }}</text>
+            <text class="mm-dir__meta mm-dir__size">{{ formatSize(node.data.size) }}</text>
+            <view class="mm-dir__more" @click.stop="openFileMenu(node.data)">
+              <uni-icons type="more-filled" size="15" color="var(--mm-text-weak)" />
             </view>
           </view>
-          <text class="mm-dir__meta">{{ formatTime(node.data.updated_at) }}</text>
-          <text class="mm-dir__meta mm-dir__size">{{ formatSize(node.data.size) }}</text>
-          <view class="mm-dir__more" @click.stop="openFileMenu(node.data)">
-            <uni-icons type="more-filled" size="15" color="var(--mm-text-weak)" />
+          <!-- 标签另起一行：无标签时整行不渲染，不留空白 -->
+          <view v-if="node.data.tags && node.data.tags.length" class="mm-dir__tags">
+            <wd-tag v-for="tag in node.data.tags.slice(0, 3)" :key="tag" plain size="small">{{ tag }}</wd-tag>
           </view>
         </view>
       </template>
@@ -455,6 +457,28 @@ defineExpose({ clearSelection: () => { selection.value = [] } })
   color: var(--mm-accent);
 }
 
+/* 文件行改为纵向：首行放名字/时间/大小，标签按需另起一行。
+   基础高度从通用行的 40px 降到 32px，无标签时整行更紧凑。 */
+.mm-dir__row--file {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+  padding: calc(3px * var(--mm-ui-scale, 1)) calc(8px * var(--mm-ui-scale, 1));
+}
+
+.mm-dir__file-line {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--mm-ui-scale, 1));
+  min-height: calc(32px * var(--mm-ui-scale, 1));
+}
+
+/* 文件行的箭头只是占位，不需要 34px 命中区高度，跟随首行即可 */
+.mm-dir__row--file .mm-dir__arrow {
+  height: calc(32px * var(--mm-ui-scale, 1));
+}
+
 .mm-dir__arrow {
   position: relative;
   display: flex;
@@ -517,11 +541,6 @@ defineExpose({ clearSelection: () => { selection.value = [] } })
   border-color: var(--mm-accent);
 }
 
-.mm-dir__main {
-  flex: 1;
-  min-width: 0;
-}
-
 .mm-dir__name {
   flex: 1;
   min-width: 0;
@@ -532,11 +551,15 @@ defineExpose({ clearSelection: () => { selection.value = [] } })
   text-overflow: ellipsis;
 }
 
+/* 标签独立成行，缩进到与首行文件名对齐：
+   占位箭头 14px + gap 6px + 复选框 15px + gap 6px（均乘 scale） */
 .mm-dir__tags {
   display: flex;
   flex-wrap: wrap;
   gap: calc(4px * var(--mm-ui-scale, 1));
-  margin-top: 3px;
+  padding-left: calc(41px * var(--mm-ui-scale, 1));
+  margin-top: calc(2px * var(--mm-ui-scale, 1));
+  padding-bottom: calc(4px * var(--mm-ui-scale, 1));
 }
 
 .mm-dir__meta {
